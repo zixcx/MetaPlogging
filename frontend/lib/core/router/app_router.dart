@@ -7,6 +7,7 @@ import 'package:meta_plogging/features/auth/presentation/pages/landing_page.dart
 import 'package:meta_plogging/features/auth/presentation/pages/login_page.dart';
 import 'package:meta_plogging/features/auth/presentation/pages/register_page.dart';
 import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
+import 'package:meta_plogging/features/feed/presentation/pages/feed_page.dart';
 import 'package:meta_plogging/features/home/presentation/pages/home_page.dart';
 import 'package:meta_plogging/features/plogging/presentation/pages/plogging_page.dart';
 import 'package:meta_plogging/features/profile/presentation/pages/profile_page.dart';
@@ -54,6 +55,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 const NoTransitionPage(child: HomePage()),
           ),
           GoRoute(
+            path: AppRoutes.feed,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: FeedPage()),
+          ),
+          GoRoute(
             path: AppRoutes.plogging,
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: PloggingPage()),
@@ -71,6 +77,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 class AppRoutes {
   static const String home = '/';
+  static const String feed = '/feed';
   static const String plogging = '/plogging';
   static const String profile = '/profile';
 
@@ -118,31 +125,42 @@ class MainShell extends StatelessWidget {
             ),
           ],
         ),
-        child: NavigationBar(
-          selectedIndex: selectedIdx,
-          onDestinationSelected: (index) =>
-              _onDestinationSelected(context, index),
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          animationDuration: const Duration(milliseconds: 200),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: '홈',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.directions_run_outlined),
-              selectedIcon: Icon(Icons.directions_run_rounded),
-              label: '플로깅',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: '프로필',
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: NavigationBar(
+            selectedIndex: selectedIdx,
+            onDestinationSelected: (index) =>
+                _onDestinationSelected(context, index),
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            indicatorColor: Colors.transparent,
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            animationDuration: const Duration(milliseconds: 200),
+            height: 54,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_rounded, size: 26),
+                selectedIcon: Icon(Icons.home_rounded, size: 26),
+                label: '홈',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.article_rounded, size: 26),
+                selectedIcon: Icon(Icons.article_rounded, size: 26),
+                label: '피드',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.directions_run_rounded, size: 26),
+                selectedIcon: Icon(Icons.directions_run_rounded, size: 26),
+                label: '플로깅',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_rounded, size: 26),
+                selectedIcon: Icon(Icons.person_rounded, size: 26),
+                label: '프로필',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -150,8 +168,9 @@ class MainShell extends StatelessWidget {
 
   int _selectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
-    if (location.startsWith(AppRoutes.plogging)) return 1;
-    if (location.startsWith(AppRoutes.profile)) return 2;
+    if (location.startsWith(AppRoutes.feed)) return 1;
+    if (location.startsWith(AppRoutes.plogging)) return 2;
+    if (location.startsWith(AppRoutes.profile)) return 3;
     return 0;
   }
 
@@ -160,8 +179,10 @@ class MainShell extends StatelessWidget {
       case 0:
         context.go(AppRoutes.home);
       case 1:
-        context.go(AppRoutes.plogging);
+        context.go(AppRoutes.feed);
       case 2:
+        context.go(AppRoutes.plogging);
+      case 3:
         context.go(AppRoutes.profile);
     }
   }

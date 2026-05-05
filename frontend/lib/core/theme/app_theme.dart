@@ -92,7 +92,7 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) {
             return const IconThemeData(color: AppColors.primary, size: 22);
           }
-          return const IconThemeData(color: AppColors.textSecondary, size: 22);
+          return const IconThemeData(color: Color(0xFFBDBDBD), size: 22);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -105,7 +105,7 @@ class AppTheme {
           return const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: AppColors.textSecondary,
+            color: Color(0xFFBDBDBD),
           );
         }),
       ),
@@ -270,7 +270,7 @@ class AppTheme {
                 color: AppColors.secondary, size: 22);
           }
           return const IconThemeData(
-              color: Color(0xFF7A9E85), size: 22);
+              color: Color(0xFF4A5E52), size: 22);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -283,7 +283,7 @@ class AppTheme {
           return const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF7A9E85),
+            color: Color(0xFF4A5E52),
           );
         }),
       ),

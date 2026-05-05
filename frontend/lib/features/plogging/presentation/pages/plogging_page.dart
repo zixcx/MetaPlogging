@@ -36,17 +36,11 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
           SliverAppBar(
             pinned: true,
             title: Text(
-              '플로깅',
+              '플로깅 기록',
               style: theme.textTheme.titleLarge,
             ),
             backgroundColor: cs.surface,
             scrolledUnderElevation: 0,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.history_rounded),
-                onPressed: () {},
-              ),
-            ],
           ),
 
           SliverToBoxAdapter(

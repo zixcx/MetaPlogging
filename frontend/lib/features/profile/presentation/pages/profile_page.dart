@@ -16,6 +16,25 @@ class ProfilePage extends ConsumerWidget {
       backgroundColor: cs.surface,
       body: CustomScrollView(
         slivers: [
+          // ── App bar ───────────────────────────────────────
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: AppColors.primaryDark,
+            foregroundColor: Colors.white,
+            scrolledUnderElevation: 0,
+            title: Text(
+              '프로필',
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(color: Colors.white),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                onPressed: () {},
+              ),
+            ],
+          ),
+
           // ── Profile header ────────────────────────────────
           SliverToBoxAdapter(
             child: _ProfileHeader(isDark: isDark),
@@ -23,7 +42,7 @@ class ProfilePage extends ConsumerWidget {
 
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -33,7 +52,7 @@ class ProfilePage extends ConsumerWidget {
 
                   // ── Stats grid ────────────────────────────
                   Text('활동 통계', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   _StatsGrid(isDark: isDark),
                   const SizedBox(height: 24),
 
@@ -68,7 +87,7 @@ class _ProfileHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 56),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -76,33 +95,12 @@ class _ProfileHeader extends StatelessWidget {
           colors: [
             AppColors.primaryDark,
             AppColors.primary,
-            isDark
-                ? AppColors.bgDark
-                : const Color(0xFFF6FBF7),
           ],
-          stops: const [0.0, 0.65, 1.0],
+          stops: const [0.0, 1.0],
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // App bar row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '프로필',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(color: Colors.white),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined,
-                      color: Colors.white),
-                  onPressed: () {},
-                ),
-              ],
-            ),
+      child: Column(
+        children: [
             const SizedBox(height: 20),
 
             // Avatar
@@ -169,7 +167,7 @@ class _ProfileHeader extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _FollowStat(label: '플로깅', value: '12'),
+                _FollowStat(label: '활동 횟수', value: '12'),
                 Container(
                   width: 1,
                   height: 24,
@@ -188,7 +186,6 @@ class _ProfileHeader extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }
