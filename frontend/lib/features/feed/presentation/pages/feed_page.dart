@@ -67,32 +67,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
             pinned: true,
             backgroundColor: cs.surface,
             scrolledUnderElevation: 0,
-            title: Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [AppColors.primaryDark, AppColors.primary],
-                    ),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.eco_rounded,
-                      color: Colors.white, size: 15),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '피드',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
+            title: Text('피드', style: theme.textTheme.titleLarge),
             actions: [
               IconButton(
                 icon: Icon(Icons.search_rounded, color: cs.onSurface),

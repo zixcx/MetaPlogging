@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meta_plogging/core/router/app_router.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
+import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -12,6 +13,13 @@ class HomePage extends ConsumerWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+
+    final authState = ref.watch(authProvider);
+    final userName = authState.when(
+      data: (user) => user?.name,
+      loading: () => null,
+      error: (e, s) => null,
+    );
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -69,16 +77,16 @@ class HomePage extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Greeting ──────────────────────────────
-                  _GreetingCard(isDark: isDark),
+                  _GreetingCard(isDark: isDark, userName: userName),
                   const SizedBox(height: 24),
 
-                  // ── Stats row ─────────────────────────────
+                  // ── Stats card ────────────────────────────
                   Text(
                     '나의 활동 통계',
                     style: theme.textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
-                  _StatsRow(),
+                  _StatsCard(isDark: isDark),
                   const SizedBox(height: 24),
 
                   // ── Quick actions ─────────────────────────
@@ -87,7 +95,7 @@ class HomePage extends ConsumerWidget {
                     style: theme.textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
-                  _QuickActionGrid(),
+                  _QuickActions(isDark: isDark),
                   const SizedBox(height: 24),
 
                   // ── Weekly chart ──────────────────────────
@@ -125,12 +133,17 @@ class HomePage extends ConsumerWidget {
 // ── Greeting card ─────────────────────────────────────────────
 class _GreetingCard extends StatelessWidget {
   final bool isDark;
+  final String? userName;
 
-  const _GreetingCard({required this.isDark});
+  const _GreetingCard({required this.isDark, required this.userName});
+
+  // TODO: API 연결 시 GET /stats/community/today 로 교체
+  static const int _mockCommunityCount = 312;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final greeting = userName != null ? '안녕하세요, $userName님! 🌿' : '안녕하세요! 🌿';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -156,14 +169,14 @@ class _GreetingCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '안녕하세요! 🌿',
+                  greeting,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: Colors.white.withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '오늘도 지구를\n지켜볼까요?',
+                  '오늘 $_mockCommunityCount명이\n함께 달리고 있어요',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -172,8 +185,7 @@ class _GreetingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 GestureDetector(
-                  onTap: () => Navigator.of(context)
-                      .pushNamed(AppRoutes.plogging),
+                  onTap: () => context.go(AppRoutes.plogging),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
@@ -239,54 +251,79 @@ class _GreetingCard extends StatelessWidget {
   }
 }
 
-// ── Stats row ─────────────────────────────────────────────────
-class _StatsRow extends StatelessWidget {
+// ── Stats card (unified) ──────────────────────────────────────
+class _StatsCard extends StatelessWidget {
+  final bool isDark;
+
+  const _StatsCard({required this.isDark});
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            label: '총 거리',
-            value: '24.8',
-            unit: 'km',
-            icon: Icons.route_rounded,
-            color: AppColors.primary,
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+          width: 1,
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            label: '수거량',
-            value: '156',
-            unit: '개',
-            icon: Icons.delete_outline_rounded,
-            color: AppColors.secondary,
-          ),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            Expanded(
+              child: _StatItem(
+                label: '총 거리',
+                value: '24.8',
+                unit: 'km',
+                icon: Icons.route_rounded,
+                color: AppColors.primary,
+              ),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+            ),
+            Expanded(
+              child: _StatItem(
+                label: '수거량',
+                value: '156',
+                unit: '개',
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.secondary,
+              ),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+            ),
+            Expanded(
+              child: _StatItem(
+                label: '활동 횟수',
+                value: '12',
+                unit: '회',
+                icon: Icons.local_fire_department_rounded,
+                color: AppColors.accent,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            label: '활동 횟수',
-            value: '12',
-            unit: '회',
-            icon: Icons.local_fire_department_rounded,
-            color: AppColors.accent,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
+class _StatItem extends StatelessWidget {
   final String label;
   final String value;
   final String unit;
   final IconData icon;
   final Color color;
 
-  const _StatCard({
+  const _StatItem({
     required this.label,
     required this.value,
     required this.unit,
@@ -297,34 +334,23 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
-          width: 1,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 17, color: color),
+            child: Icon(icon, size: 18, color: color),
           ),
           const SizedBox(height: 10),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
@@ -348,7 +374,7 @@ class _StatCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             label,
             style: theme.textTheme.labelSmall,
@@ -359,92 +385,98 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ── Quick action grid ─────────────────────────────────────────
-class _QuickActionGrid extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _QuickAction(
-            icon: Icons.map_outlined,
-            label: '활동 지도',
-            onTap: () {},
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _QuickAction(
-            icon: Icons.camera_alt_outlined,
-            label: '사진 기록',
-            onTap: () {},
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _QuickAction(
-            icon: Icons.emoji_events_outlined,
-            label: '챌린지',
-            onTap: () {},
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _QuickAction(
-            icon: Icons.people_outline_rounded,
-            label: '커뮤니티',
-            onTap: () {},
-          ),
-        ),
-      ],
-    );
-  }
-}
+// ── Quick actions (2 buttons) ─────────────────────────────────
+class _QuickActions extends StatelessWidget {
+  final bool isDark;
 
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _QuickActions({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final borderColor =
+        isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.cardDark : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? const Color(0xFF2A4035)
-                : const Color(0xFFE5F0E8),
-            width: 1,
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+        // 기록하기 — flex 3
+        Expanded(
+          flex: 3,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.primaryDark, AppColors.primary],
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.transparent,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.edit_note_rounded,
+                    size: 22,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '기록하기',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        child: Column(
-          children: [
-            Icon(icon, size: 22, color: AppColors.primary),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
+        const SizedBox(width: 10),
+        // 활동지도 — flex 1
+        Expanded(
+          flex: 1,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.cardDark : Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: borderColor, width: 1),
               ),
-              textAlign: TextAlign.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.map_outlined,
+                    size: 22,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '활동지도',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
+        ],
       ),
     );
   }

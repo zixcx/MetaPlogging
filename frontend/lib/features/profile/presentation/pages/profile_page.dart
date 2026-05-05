@@ -3,33 +3,69 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
 import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
 
-class ProfilePage extends ConsumerWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends ConsumerState<ProfilePage> {
+  final _scrollController = ScrollController();
+  bool _appBarLight = false;
+
+  // 그래디언트 헤더가 핀된 앱바 아래로 사라지는 대략적인 스크롤 오프셋
+  static const _headerThreshold = 200.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final isLight = _scrollController.offset > _headerThreshold;
+    if (isLight != _appBarLight) setState(() => _appBarLight = isLight);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
+    final appBarBg = _appBarLight ? cs.surface : AppColors.primaryDark;
+    final appBarFg = _appBarLight ? cs.onSurface : Colors.white;
+
     return Scaffold(
+      // 하단 오버스크롤 = surface(흰색). 상단은 Stack으로 별도 처리
       backgroundColor: cs.surface,
-      body: CustomScrollView(
+      body: Stack(
+        children: [
+          // 상단 오버스크롤 시 앱바·그래디언트와 색상 일치
+          Container(height: 480, color: AppColors.primaryDark),
+          CustomScrollView(
+        controller: _scrollController,
         slivers: [
           // ── App bar ───────────────────────────────────────
           SliverAppBar(
             pinned: true,
-            backgroundColor: AppColors.primaryDark,
-            foregroundColor: Colors.white,
+            backgroundColor: appBarBg,
+            foregroundColor: appBarFg,
             scrolledUnderElevation: 0,
             title: Text(
               '프로필',
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(color: Colors.white),
+              style: theme.textTheme.titleLarge?.copyWith(color: appBarFg),
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                icon: Icon(Icons.settings_outlined, color: appBarFg),
                 onPressed: () {},
               ),
             ],
@@ -40,9 +76,18 @@ class ProfilePage extends ConsumerWidget {
             child: _ProfileHeader(isDark: isDark),
           ),
 
+          // ── Body content — 그래디언트 하단과 50px 겹쳐 모서리 틈 제거
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+            child: Transform.translate(
+              offset: const Offset(0, -50),
+              child: Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 74, 20, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -69,6 +114,14 @@ class ProfilePage extends ConsumerWidget {
                 ],
               ),
             ),
+            ),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            fillOverscroll: true,
+            child: ColoredBox(color: cs.surface),
+          ),
+        ],
           ),
         ],
       ),
@@ -87,7 +140,7 @@ class _ProfileHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 56),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 36),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -97,6 +150,9 @@ class _ProfileHeader extends StatelessWidget {
             AppColors.primary,
           ],
           stops: const [0.0, 1.0],
+        ),
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(28),
         ),
       ),
       child: Column(
@@ -322,6 +378,7 @@ class _StatsGrid extends StatelessWidget {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       crossAxisCount: 2,
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
