@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:meta_plogging/core/router/app_router.dart';
@@ -14,6 +15,12 @@ void main() async {
   // Kakao SDK 초기화
   KakaoSdk.init(
     nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
+  );
+
+  // Naver Map SDK 초기화
+  await FlutterNaverMap().init(
+    clientId: dotenv.env['NAVER_MAP_CLIENT_ID'] ?? '',
+    onAuthFailed: (e) => debugPrint('Naver Map auth failed: $e'),
   );
 
   runApp(

@@ -15,4 +15,21 @@ class ApiEndpoints {
   static const String findPassword = '/auth/find-password';
   static const String refreshToken = '/auth/refresh';
   static const String me = '/auth/me';
+
+  // Tracking
+  static const String trackingSessions = '/tracking/sessions';
+  static const String trackingActive = '/tracking/sessions/active';
+  static String trackingPoints(String id) => '/tracking/sessions/$id/points';
+  static String trackingPause(String id) => '/tracking/sessions/$id/pause';
+  static String trackingResume(String id) => '/tracking/sessions/$id/resume';
+  static String trackingEnd(String id) => '/tracking/sessions/$id/end';
+  static String trackingSession(String id) => '/tracking/sessions/$id';
+  static String trackingTrashPoints(String id) =>
+      '/tracking/sessions/$id/trash-points';
+
+  // Places
+  static const String placesSearch = '/places/search';
+
+  // Users
+  static const String userStats = '/users/me/stats';
 }

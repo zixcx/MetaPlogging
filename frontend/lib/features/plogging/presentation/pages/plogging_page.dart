@@ -1,33 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
+import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
+import 'package:meta_plogging/features/plogging/presentation/pages/tracking_page.dart';
+import 'package:meta_plogging/features/plogging/presentation/providers/tracking_provider.dart';
 
-class PloggingPage extends ConsumerStatefulWidget {
+class PloggingPage extends ConsumerWidget {
   const PloggingPage({super.key});
 
   @override
-  ConsumerState<PloggingPage> createState() => _PloggingPageState();
-}
-
-class _PloggingPageState extends ConsumerState<PloggingPage> {
-  bool _isRunning = false;
-  final int _elapsedSeconds = 0;
-
-  String get _timeFormatted {
-    final m = (_elapsedSeconds ~/ 60).toString().padLeft(2, '0');
-    final s = (_elapsedSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  void _togglePlogging() {
-    setState(() => _isRunning = !_isRunning);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(trackingProvider);
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+
+    // 진행 중인 세션이 있으면 TrackingPage로 이동
+    if (state.isRunning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const TrackingPage(),
+            fullscreenDialog: true,
+          ),
+        );
+      });
+    }
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -35,41 +33,50 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
         slivers: [
           SliverAppBar(
             pinned: true,
-            title: Text(
-              '플로깅 기록',
-              style: theme.textTheme.titleLarge,
-            ),
+            title: Text('플로깅 기록', style: theme.textTheme.titleLarge),
             backgroundColor: cs.surface,
             scrolledUnderElevation: 0,
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Map placeholder ──────────────────────
-                  _MapPlaceholder(isDark: isDark),
-                  const SizedBox(height: 20),
-
-                  // ── Live stats ────────────────────────────
-                  if (_isRunning) ...[
-                    _LiveStats(
-                      time: _timeFormatted,
-                      isDark: isDark,
+                  // ── 이어하기 배너 ──────────────────────────
+                  if (state.session != null && !state.isRunning) ...[
+                    _ResumeBanner(
+                      session: state.session!,
+                      onResume: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TrackingPage(),
+                          fullscreenDialog: true,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 20),
                   ],
 
-                  // ── Start/Stop button ─────────────────────
-                  _PloggingCta(
-                    isRunning: _isRunning,
-                    onToggle: _togglePlogging,
+                  // ── 시작 카드 ─────────────────────────────
+                  _StartCard(
+                    isDark: isDark,
+                    isLoading: state.isLoading,
+                    onStart: () async {
+                      await ref
+                          .read(trackingProvider.notifier)
+                          .startSession();
+                    },
                   ),
                   const SizedBox(height: 28),
 
-                  // ── Tips ─────────────────────────────────
+                  // ── 최근 기록 ─────────────────────────────
+                  Text('최근 플로깅', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  _RecentSessionList(isDark: isDark),
+
+                  const SizedBox(height: 28),
+
+                  // ── 팁 ────────────────────────────────────
                   Text('플로깅 팁', style: theme.textTheme.titleLarge),
                   const SizedBox(height: 12),
                   _TipCards(isDark: isDark),
@@ -83,114 +90,52 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
   }
 }
 
-// ── Map placeholder ───────────────────────────────────────────
-class _MapPlaceholder extends StatelessWidget {
-  final bool isDark;
+// ── 이어하기 배너 ──────────────────────────────────────────────
+class _ResumeBanner extends StatelessWidget {
+  final TrackingSessionEntity session;
+  final VoidCallback onResume;
 
-  const _MapPlaceholder({required this.isDark});
+  const _ResumeBanner({required this.session, required this.onResume});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+    final theme = Theme.of(context);
+
+    return GestureDetector(
+      onTap: onResume,
       child: Container(
-        height: 240,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [
-                    const Color(0xFF1A3028),
-                    const Color(0xFF0F2018),
-                  ]
-                : [
-                    const Color(0xFFD0ECE0),
-                    const Color(0xFFB8DECC),
-                  ],
+          color: Colors.orange.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.orange.withValues(alpha: 0.3),
           ),
         ),
-        child: Stack(
+        child: Row(
           children: [
-            // Grid pattern
-            CustomPaint(
-              size: const Size(double.infinity, 240),
-              painter: _GridPainter(isDark: isDark),
-            ),
-            // Center pin
-            Center(
+            const Icon(Icons.pause_circle_outline_rounded,
+                color: Colors.orange, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.4),
-                          blurRadius: 16,
-                          spreadRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.my_location_rounded,
-                      color: Colors.white,
-                      size: 26,
+                  Text(
+                    '중단된 플로깅이 있어요',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: const Text(
-                      '내 위치',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
+                  Text(
+                    '${session.distanceKm.toStringAsFixed(2)}km · ${session.formattedDuration} 진행됨',
+                    style: theme.textTheme.bodySmall,
                   ),
                 ],
               ),
             ),
-            // Map label
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.map_rounded,
-                        size: 13, color: AppColors.primary),
-                    SizedBox(width: 4),
-                    Text(
-                      '지도',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                size: 14, color: Colors.orange),
           ],
         ),
       ),
@@ -198,186 +143,258 @@ class _MapPlaceholder extends StatelessWidget {
   }
 }
 
-class _GridPainter extends CustomPainter {
+// ── 시작 카드 ──────────────────────────────────────────────────
+class _StartCard extends StatelessWidget {
   final bool isDark;
+  final bool isLoading;
+  final VoidCallback onStart;
 
-  const _GridPainter({required this.isDark});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = (isDark ? Colors.white : AppColors.primary)
-          .withValues(alpha: 0.07)
-      ..strokeWidth = 1;
-
-    for (double x = 0; x < size.width; x += 32) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += 32) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ── Live stats ────────────────────────────────────────────────
-class _LiveStats extends StatelessWidget {
-  final String time;
-  final bool isDark;
-
-  const _LiveStats({required this.time, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          _LiveStatItem(
-            label: '시간',
-            value: time,
-            icon: Icons.timer_outlined,
-            color: AppColors.primary,
-          ),
-          _Divider(),
-          _LiveStatItem(
-            label: '거리',
-            value: '0.0 km',
-            icon: Icons.route_rounded,
-            color: AppColors.secondary,
-          ),
-          _Divider(),
-          _LiveStatItem(
-            label: '수거',
-            value: '0개',
-            icon: Icons.delete_outline_rounded,
-            color: AppColors.accent,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 40,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      color: Theme.of(context).dividerColor,
-    );
-  }
-}
-
-class _LiveStatItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _LiveStatItem({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
+  const _StartCard({
+    required this.isDark,
+    required this.isLoading,
+    required this.onStart,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Expanded(
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primaryDark, AppColors.primary],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(height: 4),
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.15),
+                ),
+                child: const Icon(
+                  Icons.eco_rounded,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  'GPS 트래킹',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: color,
+            '지금 바로\n플로깅 시작하기',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: Colors.white,
               fontWeight: FontWeight.w800,
+              height: 1.2,
             ),
           ),
-          Text(label, style: theme.textTheme.labelSmall),
+          const SizedBox(height: 6),
+          Text(
+            '경로와 수거량이 자동으로 기록됩니다',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isLoading ? null : onStart,
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : const Icon(Icons.directions_run_rounded, size: 18),
+              label: Text(isLoading ? '준비 중...' : '플로깅 시작'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── Plogging CTA ──────────────────────────────────────────────
-class _PloggingCta extends StatelessWidget {
-  final bool isRunning;
-  final VoidCallback onToggle;
+// ── 최근 세션 목록 (mock) ──────────────────────────────────────
+class _RecentSessionList extends StatelessWidget {
+  final bool isDark;
 
-  const _PloggingCta({required this.isRunning, required this.onToggle});
+  const _RecentSessionList({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
+    // TODO: API 연동 후 실제 데이터로 교체
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (isRunning) ...[
-          // Stop button
-          OutlinedButton.icon(
-            onPressed: onToggle,
-            icon: const Icon(Icons.stop_rounded),
-            label: const Text('플로깅 종료'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: const BorderSide(color: AppColors.accent, width: 1.5),
-            ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.camera_alt_outlined, size: 18),
-            label: const Text('쓰레기 사진 촬영'),
-          ),
-        ] else ...[
-          // Start button
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [AppColors.primaryDark, AppColors.primary],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: FilledButton.icon(
-              onPressed: onToggle,
-              icon: const Icon(Icons.directions_run_rounded, size: 20),
-              label: const Text('플로깅 시작하기'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-              ),
-            ),
-          ),
-        ],
+        _SessionCard(
+          isDark: isDark,
+          title: '한강 반포지구',
+          date: '오늘 07:32',
+          distanceKm: '3.2',
+          duration: '42:00',
+          trashCount: 24,
+        ),
+        const SizedBox(height: 10),
+        _SessionCard(
+          isDark: isDark,
+          title: '서울숲',
+          date: '어제 06:15',
+          distanceKm: '4.8',
+          duration: '58:00',
+          trashCount: 36,
+        ),
       ],
     );
   }
 }
 
-// ── Tip cards ─────────────────────────────────────────────────
+class _SessionCard extends StatelessWidget {
+  final bool isDark;
+  final String title;
+  final String date;
+  final String distanceKm;
+  final String duration;
+  final int trashCount;
+
+  const _SessionCard({
+    required this.isDark,
+    required this.title,
+    required this.date,
+    required this.distanceKm,
+    required this.duration,
+    required this.trashCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF2A4035)
+              : const Color(0xFFE5F0E8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, AppColors.secondary],
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.directions_run_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 2),
+                Text(date, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _MiniStat(
+                  icon: Icons.route_rounded,
+                  value: '${distanceKm}km',
+                  color: AppColors.primary),
+              const SizedBox(height: 2),
+              _MiniStat(
+                  icon: Icons.delete_outline_rounded,
+                  value: '$trashCount개',
+                  color: AppColors.secondary),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color color;
+
+  const _MiniStat(
+      {required this.icon, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 팁 카드 ────────────────────────────────────────────────────
 class _TipCards extends StatelessWidget {
   final bool isDark;
 
@@ -450,7 +467,6 @@ class _TipCard extends StatelessWidget {
           color: isDark
               ? const Color(0xFF2A4035)
               : const Color(0xFFE5F0E8),
-          width: 1,
         ),
       ),
       child: Row(

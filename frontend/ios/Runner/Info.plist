@@ -47,6 +47,17 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Location permissions -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>플로깅 경로를 기록하기 위해 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>플로깅 중 앱이 백그라운드 상태에서도 경로를 기록하기 위해 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>플로깅 중 앱이 백그라운드 상태에서도 경로를 기록하기 위해 위치 정보가 필요합니다.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
