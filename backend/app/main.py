@@ -1,19 +1,45 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
-from app.core.database import Base, engine
+from app.core.database import Base, SessionLocal, engine
+from app.core.config import settings
+# Import models so Base.metadata.create_all picks them up
+from app.models import user as _user_model  # noqa: F401
+from app.models import place as _place_model  # noqa: F401
+from app.models import tracking as _tracking_model  # noqa: F401
 from api.v1.auth import router as auth_router
+from api.v1.tracking import router as tracking_router
+from api.v1.places import router as places_router
+from api.v1.users import router as users_router
+
+
+def _run_lightweight_migrations() -> None:
+    """SQLAlchemy create_all 이 처리하지 못하는 컬럼 추가를 보강한다 (SQLite 한정)."""
+    pending = [
+        ("tracking_sessions", "paused_at", "DATETIME"),
+        ("tracking_sessions", "pause_duration_seconds", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    with engine.begin() as conn:
+        for table, column, ddl in pending:
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create DB tables on startup
     Base.metadata.create_all(bind=engine)
+    _run_lightweight_migrations()
     yield
-    # (shutdown logic would go here if needed)
 
 
 app = FastAPI(
@@ -23,7 +49,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all origins for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,13 +57,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount routers
 app.include_router(auth_router, prefix="/api")
+app.include_router(tracking_router, prefix="/api")
+app.include_router(places_router, prefix="/api")
+app.include_router(users_router, prefix="/api")
 
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 def health_check():
-    return {"status": "ok"}
+    db_status = "ok"
+    db_error: str | None = None
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception as exc:
+        db_status = "error"
+        db_error = str(exc)
+
+    overall = "ok" if db_status == "ok" else "degraded"
+    payload = {
+        "status": overall,
+        "timestamp": datetime.now(KST).isoformat(),
+        "version": app.version,
+        "checks": {
+            "database": {"status": db_status, **({"error": db_error} if db_error else {})},
+        },
+    }
+    http_status = status.HTTP_200_OK if overall == "ok" else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(content=payload, status_code=http_status)
 
 
 if __name__ == "__main__":
