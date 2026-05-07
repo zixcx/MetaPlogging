@@ -4,10 +4,13 @@ from zoneinfo import ZoneInfo
 
 KST = ZoneInfo("Asia/Seoul")
 
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.core.database import Base, SessionLocal, engine
@@ -16,10 +19,14 @@ from app.core.config import settings
 from app.models import user as _user_model  # noqa: F401
 from app.models import place as _place_model  # noqa: F401
 from app.models import tracking as _tracking_model  # noqa: F401
+from app.models import post as _post_model  # noqa: F401
 from api.v1.auth import router as auth_router
 from api.v1.tracking import router as tracking_router
 from api.v1.places import router as places_router
 from api.v1.users import router as users_router
+from api.v1.posts import router as posts_router
+from api.v1.comments import router as comments_router
+from api.v1.images import router as images_router
 
 
 def _run_lightweight_migrations() -> None:
@@ -27,6 +34,7 @@ def _run_lightweight_migrations() -> None:
     pending = [
         ("tracking_sessions", "paused_at", "DATETIME"),
         ("tracking_sessions", "pause_duration_seconds", "INTEGER NOT NULL DEFAULT 0"),
+        ("tracking_sessions", "post_id", "VARCHAR"),
     ]
     with engine.begin() as conn:
         for table, column, ddl in pending:
@@ -37,6 +45,7 @@ def _run_lightweight_migrations() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _run_lightweight_migrations()
     yield
@@ -61,6 +70,13 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(tracking_router, prefix="/api")
 app.include_router(places_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(posts_router, prefix="/api")
+app.include_router(comments_router, prefix="/api")
+app.include_router(images_router, prefix="/api")
+
+# uploads 디렉토리가 없으면 미리 생성 (StaticFiles mount 는 디렉토리 존재 필요)
+Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health", tags=["health"])

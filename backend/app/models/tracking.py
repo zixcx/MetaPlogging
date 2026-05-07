@@ -53,6 +53,9 @@ class TrackingSession(Base):
     # [{"category": "cigarette", "amount": {"level": "moderate", "count": null}}, ...]
     trash_items = Column(JSON, nullable=False, default=list)
 
+    # 피드 공유 시 연결되는 post id (FK 없이 문자열만 저장, 순환 참조 방지)
+    post_id = Column(String, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
     updated_at = Column(
         DateTime,
