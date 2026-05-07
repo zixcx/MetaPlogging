@@ -94,6 +94,7 @@ class TrackingSessionSummary(BaseModel):
     distance_meters: int
     description: Optional[str] = None
     place: Optional[PlaceResponse] = None
+    post_id: Optional[str] = None
     trash_items: List[TrashItem] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

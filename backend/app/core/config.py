@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     TRACKING_SESSION_TIMEOUT_MINUTES: int = 60
 
+    UPLOAD_DIR: str = "uploads"
+    MAX_IMAGES_PER_POST: int = 20
+    ALLOWED_IMAGE_EXTENSIONS: set = {"jpg", "jpeg", "png", "heic", "heif", "webp"}
+
     class Config:
         env_file = ".env"
 

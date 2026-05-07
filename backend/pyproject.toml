@@ -15,6 +15,7 @@ dependencies = [
     "pydantic[email]",
     "google-auth",
     "httpx",
+    "python-multipart",
 ]
 
 [dependency-groups]
