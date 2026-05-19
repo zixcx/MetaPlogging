@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -27,26 +29,46 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _loginWithUsername() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() => _errorMessage = null);
     await ref.read(authProvider.notifier).loginWithUsername(
           username: _usernameCtrl.text.trim(),
           password: _passwordCtrl.text,
         );
   }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
-    );
+  String _parseError(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      final detail = error.response?.data?['detail'];
+
+      if (status == 401) {
+        return '아이디 또는 비밀번호가 올바르지 않습니다.';
+      }
+      if (status == 422) {
+        return '입력 형식이 올바르지 않습니다.';
+      }
+      if (detail is String && detail.isNotEmpty) {
+        return detail;
+      }
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return '서버 연결 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.';
+      }
+      if (error.type == DioExceptionType.connectionError) {
+        return '서버에 연결할 수 없습니다. 네트워크를 확인해주세요.';
+      }
+    }
+    return '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(authProvider, (_, next) {
-      if (next is AsyncError) _showError(next.error.toString());
+    ref.listen(authProvider, (prev, next) {
+      if (next is AsyncError) {
+        setState(() => _errorMessage = _parseError(next.error ?? '알 수 없는 오류'));
+      } else if (next is AsyncLoading) {
+        setState(() => _errorMessage = null);
+      }
     });
 
     final theme = Theme.of(context);
@@ -81,6 +103,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   label: '아이디',
                   icon: Icons.badge_outlined,
                   textInputAction: TextInputAction.next,
+                  onChanged: (_) {
+                    if (_errorMessage != null) {
+                      setState(() => _errorMessage = null);
+                    }
+                  },
                   validator: (v) {
                     if (v == null || v.isEmpty) return '아이디를 입력해주세요.';
                     return null;
@@ -96,6 +123,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _loginWithUsername(),
+                  onChanged: (_) {
+                    if (_errorMessage != null) {
+                      setState(() => _errorMessage = null);
+                    }
+                  },
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
@@ -130,7 +162,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
+
+                // ── 에러 메시지 박스 ─────────────────────────
+                if (_errorMessage != null) ...[
+                  _ErrorBox(message: _errorMessage!),
+                  const SizedBox(height: 12),
+                ] else
+                  const SizedBox(height: 8),
 
                 // ── Login button ─────────────────────────────
                 FilledButton(
@@ -182,6 +221,52 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
+// ── 에러 박스 ─────────────────────────────────────────────────
+class _ErrorBox extends StatelessWidget {
+  final String message;
+
+  const _ErrorBox({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF4757).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFF4757).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFFF4757),
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFFFF4757),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Login header ──────────────────────────────────────────────
 class _LoginHeader extends StatelessWidget {
   @override
@@ -216,6 +301,7 @@ class _AuthField extends StatelessWidget {
   final bool obscureText;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onFieldSubmitted;
+  final ValueChanged<String>? onChanged;
   final Widget? suffixIcon;
   final FormFieldValidator<String>? validator;
 
@@ -226,6 +312,7 @@ class _AuthField extends StatelessWidget {
     this.obscureText = false,
     this.textInputAction,
     this.onFieldSubmitted,
+    this.onChanged,
     this.suffixIcon,
     this.validator,
   });
@@ -239,6 +326,7 @@ class _AuthField extends StatelessWidget {
       obscureText: obscureText,
       textInputAction: textInputAction,
       onFieldSubmitted: onFieldSubmitted,
+      onChanged: onChanged,
       validator: validator,
       style: Theme.of(context).textTheme.bodyLarge,
       decoration: InputDecoration(

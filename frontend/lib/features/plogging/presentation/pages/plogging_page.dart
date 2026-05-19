@@ -1,31 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:meta_plogging/core/router/app_router.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
 import 'package:meta_plogging/features/plogging/presentation/pages/tracking_page.dart';
+import 'package:meta_plogging/features/plogging/presentation/providers/sessions_provider.dart';
 import 'package:meta_plogging/features/plogging/presentation/providers/tracking_provider.dart';
 
-class PloggingPage extends ConsumerWidget {
+class PloggingPage extends ConsumerStatefulWidget {
   const PloggingPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PloggingPage> createState() => _PloggingPageState();
+}
+
+class _PloggingPageState extends ConsumerState<PloggingPage> {
+  bool _navigating = false;
+
+  void _goTracking() {
+    if (_navigating) return;
+    _navigating = true;
+    Navigator.of(context, rootNavigator: true)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => const TrackingPage(),
+            fullscreenDialog: true,
+          ),
+        )
+        .then((_) => _navigating = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(trackingProvider);
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 진행 중인 세션이 있으면 TrackingPage로 이동
-    if (state.isRunning) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const TrackingPage(),
-            fullscreenDialog: true,
+    // 에러 표시
+    ref.listen<TrackingState>(trackingProvider, (prev, next) {
+      final err = next.error;
+      if (err != null && err != prev?.error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 3),
           ),
         );
-      });
-    }
+        ref.read(trackingProvider.notifier).clearError();
+      }
+      // 세션 시작됐으면 TrackingPage로 이동
+      if ((prev == null || !prev.isRunning) && next.isRunning) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _goTracking());
+      }
+    });
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -47,12 +78,7 @@ class PloggingPage extends ConsumerWidget {
                   if (state.session != null && !state.isRunning) ...[
                     _ResumeBanner(
                       session: state.session!,
-                      onResume: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const TrackingPage(),
-                          fullscreenDialog: true,
-                        ),
-                      ),
+                      onResume: _goTracking,
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -70,7 +96,22 @@ class PloggingPage extends ConsumerWidget {
                   const SizedBox(height: 28),
 
                   // ── 최근 기록 ─────────────────────────────
-                  Text('최근 플로깅', style: theme.textTheme.titleLarge),
+                  Row(
+                    children: [
+                      Text('최근 플로깅', style: theme.textTheme.titleLarge),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => context.push(AppRoutes.allSessions),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 0),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('모두 보기'),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   _RecentSessionList(isDark: isDark),
 
@@ -257,135 +298,195 @@ class _StartCard extends StatelessWidget {
   }
 }
 
-// ── 최근 세션 목록 (mock) ──────────────────────────────────────
-class _RecentSessionList extends StatelessWidget {
+// ── 최근 세션 목록 ────────────────────────────────────────────────
+class _RecentSessionList extends ConsumerWidget {
   final bool isDark;
 
   const _RecentSessionList({required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
-    // TODO: API 연동 후 실제 데이터로 교체
-    return Column(
-      children: [
-        _SessionCard(
-          isDark: isDark,
-          title: '한강 반포지구',
-          date: '오늘 07:32',
-          distanceKm: '3.2',
-          duration: '42:00',
-          trashCount: 24,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionsAsync = ref.watch(completedSessionsProvider);
+
+    return sessionsAsync.when(
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(),
         ),
-        const SizedBox(height: 10),
-        _SessionCard(
-          isDark: isDark,
-          title: '서울숲',
-          date: '어제 06:15',
-          distanceKm: '4.8',
-          duration: '58:00',
-          trashCount: 36,
+      ),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          '기록을 불러올 수 없습니다.',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-      ],
+      ),
+      data: (sessions) {
+        if (sessions.isEmpty) {
+          return _EmptySessionPlaceholder(isDark: isDark);
+        }
+        return Column(
+          children: sessions
+              .take(5)
+              .map((s) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _SessionCard(session: s, isDark: isDark),
+                  ))
+              .toList(),
+        );
+      },
     );
   }
 }
 
-class _SessionCard extends StatelessWidget {
+class _EmptySessionPlaceholder extends StatelessWidget {
   final bool isDark;
-  final String title;
-  final String date;
-  final String distanceKm;
-  final String duration;
-  final int trashCount;
 
-  const _SessionCard({
-    required this.isDark,
-    required this.title,
-    required this.date,
-    required this.distanceKm,
-    required this.duration,
-    required this.trashCount,
-  });
+  const _EmptySessionPlaceholder({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
-        ),
+        border: Border.all(color: cs.outlineVariant),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primary, AppColors.secondary],
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.directions_run_rounded,
-                color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleSmall),
-                const SizedBox(height: 2),
-                Text(date, style: theme.textTheme.bodySmall),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _MiniStat(
-                  icon: Icons.route_rounded,
-                  value: '${distanceKm}km',
-                  color: AppColors.primary),
-              const SizedBox(height: 2),
-              _MiniStat(
-                  icon: Icons.delete_outline_rounded,
-                  value: '$trashCount개',
-                  color: AppColors.secondary),
-            ],
-          ),
+          Icon(Icons.directions_run_rounded,
+              size: 40, color: cs.onSurfaceVariant),
+          const SizedBox(height: 10),
+          Text('아직 플로깅 기록이 없어요',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          Text('위 버튼으로 첫 플로깅을 시작해보세요!',
+              style: theme.textTheme.bodySmall),
         ],
       ),
     );
   }
 }
 
-class _MiniStat extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final Color color;
+class _SessionCard extends StatelessWidget {
+  final TrackingSessionEntity session;
+  final bool isDark;
 
-  const _MiniStat(
-      {required this.icon, required this.value, required this.color});
+  const _SessionCard({required this.session, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.sessionDetail(session.id)),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primary, AppColors.secondary],
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.directions_run_rounded,
+                  color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.locationLandmarkName ?? '플로깅 기록',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatDate(session.startedAt),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _MiniStat(
+                  icon: Icons.route_rounded,
+                  value: '${session.distanceKm.toStringAsFixed(2)}km',
+                  color: cs.primary,
+                ),
+                const SizedBox(height: 2),
+                _MiniStat(
+                  icon: Icons.timer_outlined,
+                  value: session.formattedDuration,
+                  color: cs.primary,
+                ),
+              ],
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime dt) {
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    if (local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day) {
+      return '오늘 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (local.year == yesterday.year &&
+        local.month == yesterday.month &&
+        local.day == yesterday.day) {
+      return '어제 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    }
+    return '${local.month}/${local.day} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color? color;
+
+  const _MiniStat({required this.icon, required this.value, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.primary;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: color),
+        Icon(icon, size: 12, color: c),
         const SizedBox(width: 3),
         Text(
           value,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: color,
+                color: c,
                 fontWeight: FontWeight.w700,
               ),
         ),

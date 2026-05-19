@@ -1,8 +1,14 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
-import 'package:meta_plogging/features/feed/domain/entities/post_entity.dart';
+import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
 import 'package:meta_plogging/features/feed/presentation/providers/feed_provider.dart';
+import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
+import 'package:meta_plogging/features/profile/presentation/providers/profile_provider.dart';
 
 class CreatePostSheet extends ConsumerStatefulWidget {
   const CreatePostSheet({super.key});
@@ -13,9 +19,14 @@ class CreatePostSheet extends ConsumerStatefulWidget {
 
 class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
   final _captionController = TextEditingController();
-  final List<String> _selectedImages = [];
-  bool _attachActivity = false;
+  final List<XFile> _selectedFiles = [];
+  TrackingSessionEntity? _attachedSession;
   bool _isPosting = false;
+
+  // 백엔드: caption 필수 + (images 또는 tracking_id) 중 하나 이상 필수
+  bool get _canPost =>
+      _captionController.text.isNotEmpty &&
+      (_selectedFiles.isNotEmpty || _attachedSession != null);
 
   @override
   void dispose() {
@@ -24,41 +35,61 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
   }
 
   Future<void> _handlePost() async {
-    if (_captionController.text.isEmpty && _selectedImages.isEmpty) return;
-
+    if (!_canPost) return;
     setState(() => _isPosting = true);
-    await Future.delayed(const Duration(milliseconds: 400));
 
-    final post = PostEntity(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      authorName: '플로깅 러너',
-      authorEmoji: '🌿',
-      imageMocks: List.from(_selectedImages),
-      caption: _captionController.text.isEmpty
-          ? null
-          : _captionController.text,
-      activityStats: _attachActivity
-          ? const PostActivityStats(
-              distanceKm: 3.2, trashCount: 24, durationMinutes: 42)
-          : null,
-      likeCount: 0,
-      commentCount: 0,
-      shareCount: 0,
-      createdAt: DateTime.now(),
-      locationName: _attachActivity ? '한강 반포지구' : null,
-    );
+    try {
+      await ref.read(feedProvider.notifier).createPost(
+            caption: _captionController.text,
+            imageFiles: _selectedFiles.map((f) => File(f.path)).toList(),
+            session: _attachedSession,
+          );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isPosting = false);
 
-    ref.read(feedProvider.notifier).addPost(post);
+      String message = '게시 실패';
+      if (e is DioException) {
+        final detail = e.response?.data;
+        if (detail != null) {
+          message = '게시 실패 (${e.response?.statusCode}): $detail';
+        } else {
+          message = '게시 실패: ${e.message}';
+        }
+      } else {
+        message = '게시 실패: $e';
+      }
 
-    if (mounted) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickImages() async {
+    if (_selectedFiles.length >= 5) return;
+    final picker = ImagePicker();
+    final remaining = 5 - _selectedFiles.length;
+    final picked = await picker.pickMultiImage(limit: remaining);
+    if (picked.isNotEmpty) {
+      setState(() => _selectedFiles.addAll(picked));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final canPost =
-        _captionController.text.isNotEmpty || _selectedImages.isNotEmpty;
+    final user = ref.watch(authProvider).asData?.value;
+    final authorName = user?.name ?? '플로깅 러너';
+    final recentSessions = ref.watch(recentSessionsProvider);
+    final latestSession = recentSessions.asData?.value.firstOrNull;
 
     return Container(
       decoration: BoxDecoration(
@@ -106,18 +137,17 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                   ),
                 ),
                 TextButton(
-                  onPressed: canPost && !_isPosting ? _handlePost : null,
+                  onPressed: _canPost && !_isPosting ? _handlePost : null,
                   child: _isPosting
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
                           '게시',
                           style: TextStyle(
-                            color: canPost
+                            color: _canPost
                                 ? AppColors.primary
                                 : theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
@@ -153,8 +183,8 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                           ),
                         ),
                         child: const Center(
-                          child: Text('🌿',
-                              style: TextStyle(fontSize: 18)),
+                          child:
+                              Text('🌿', style: TextStyle(fontSize: 18)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -163,7 +193,7 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '플로깅 러너',
+                              authorName,
                               style: theme.textTheme.titleSmall
                                   ?.copyWith(fontWeight: FontWeight.w700),
                             ),
@@ -191,71 +221,32 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                   ),
 
                   // Selected images preview
-                  if (_selectedImages.isNotEmpty) ...[
+                  if (_selectedFiles.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       height: 80,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        itemCount: _selectedImages.length + 1,
+                        itemCount: _selectedFiles.length + 1,
                         separatorBuilder: (context, i) =>
                             const SizedBox(width: 8),
                         itemBuilder: (context, i) {
-                          if (i == _selectedImages.length) {
-                            return _AddImageButton(
-                              onTap: _showImagePicker,
-                            );
+                          if (i == _selectedFiles.length) {
+                            return _selectedFiles.length < 5
+                                ? _AddImageButton(onTap: _pickImages)
+                                : const SizedBox.shrink();
                           }
-                          final key = _selectedImages[i];
-                          final style = kMockImageStyles[key]!;
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Stack(
-                              children: [
-                                Container(
-                                  width: 80,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: style.colors,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Icon(style.icon,
-                                        size: 28,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.4)),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 4,
-                                  right: 4,
-                                  child: GestureDetector(
-                                    onTap: () => setState(
-                                        () => _selectedImages.removeAt(i)),
-                                    child: Container(
-                                      width: 20,
-                                      height: 20,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.5),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.close,
-                                          size: 12, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                          return _FileThumb(
+                            file: _selectedFiles[i],
+                            onRemove: () =>
+                                setState(() => _selectedFiles.removeAt(i)),
                           );
                         },
                       ),
                     ),
                   ] else ...[
                     const SizedBox(height: 16),
-                    _AddImageButton(onTap: _showImagePicker),
+                    _AddImageButton(onTap: _pickImages),
                   ],
 
                   const SizedBox(height: 20),
@@ -269,12 +260,25 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 10),
-                  _ActivityAttachTile(
-                    isAttached: _attachActivity,
-                    onToggle: () =>
-                        setState(() => _attachActivity = !_attachActivity),
-                    isDark: isDark,
-                  ),
+                  if (latestSession != null)
+                    _ActivityAttachTile(
+                      session: latestSession,
+                      isAttached: _attachedSession?.id == latestSession.id,
+                      onToggle: () => setState(() {
+                        _attachedSession =
+                            _attachedSession?.id == latestSession.id
+                                ? null
+                                : latestSession;
+                      }),
+                      isDark: isDark,
+                    )
+                  else
+                    Text(
+                      '완료된 플로깅 기록이 없어요',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -287,16 +291,44 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
       ),
     );
   }
+}
 
-  void _showImagePicker() {
-    if (_selectedImages.length >= 3) return;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => _ImagePickerSheet(
-        onSelect: (key) {
-          Navigator.pop(ctx);
-          setState(() => _selectedImages.add(key));
-        },
+// ── File thumbnail ──────────────────────────────────────────────
+class _FileThumb extends StatelessWidget {
+  final XFile file;
+  final VoidCallback onRemove;
+
+  const _FileThumb({required this.file, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        children: [
+          Image.file(
+            File(file.path),
+            width: 80,
+            height: 80,
+            fit: BoxFit.cover,
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, size: 12, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -332,10 +364,10 @@ class _AddImageButton extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_photo_alternate_outlined,
+            const Icon(Icons.add_photo_alternate_outlined,
                 size: 24, color: AppColors.primary),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               '사진 추가',
               style: TextStyle(
                 fontSize: 10,
@@ -352,11 +384,13 @@ class _AddImageButton extends StatelessWidget {
 
 // ── Activity attach tile ───────────────────────────────────────
 class _ActivityAttachTile extends StatelessWidget {
+  final TrackingSessionEntity session;
   final bool isAttached;
   final VoidCallback onToggle;
   final bool isDark;
 
   const _ActivityAttachTile({
+    required this.session,
     required this.isAttached,
     required this.onToggle,
     required this.isDark,
@@ -365,6 +399,11 @@ class _ActivityAttachTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final locationLabel = session.locationLandmarkName ??
+        session.locationDescription ??
+        '플로깅 기록';
+    final stats =
+        '${session.distanceKm.toStringAsFixed(1)}km · ${session.totalTrashCount}개 수거 · ${session.durationSeconds ~/ 60}분';
 
     return GestureDetector(
       onTap: onToggle,
@@ -374,7 +413,9 @@ class _ActivityAttachTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isAttached
               ? AppColors.primary.withValues(alpha: 0.06)
-              : (isDark ? const Color(0xFF1E3528) : const Color(0xFFF6FBF7)),
+              : (isDark
+                  ? const Color(0xFF1E3528)
+                  : const Color(0xFFF6FBF7)),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isAttached
@@ -403,7 +444,7 @@ class _ActivityAttachTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '오늘 07:32 · 한강 반포지구',
+                    locationLabel,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: theme.colorScheme.onSurface,
@@ -411,7 +452,7 @@ class _ActivityAttachTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '3.2km · 24개 수거 · 42분',
+                    stats,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
@@ -429,83 +470,6 @@ class _ActivityAttachTile extends StatelessWidget {
               color: isAttached
                   ? AppColors.primary
                   : theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Image picker sheet ─────────────────────────────────────────
-class _ImagePickerSheet extends StatelessWidget {
-  final void Function(String key) onSelect;
-
-  const _ImagePickerSheet({required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('배경 선택',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1,
-              children: kMockImageStyles.entries.map((e) {
-                final style = e.value;
-                return GestureDetector(
-                  onTap: () => onSelect(e.key),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: style.colors,
-                        ),
-                      ),
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: Icon(style.icon,
-                                size: 36,
-                                color:
-                                    Colors.white.withValues(alpha: 0.3)),
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            left: 0,
-                            right: 0,
-                            child: Text(
-                              style.label,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
             ),
           ],
         ),

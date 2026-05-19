@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
 import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
+import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
+import 'package:meta_plogging/features/profile/domain/entities/user_stats_entity.dart';
+import 'package:meta_plogging/features/profile/presentation/providers/profile_provider.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -14,7 +17,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _scrollController = ScrollController();
   bool _appBarLight = false;
 
-  // 그래디언트 헤더가 핀된 앱바 아래로 사라지는 대략적인 스크롤 오프셋
   static const _headerThreshold = 200.0;
 
   @override
@@ -43,97 +45,165 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final appBarBg = _appBarLight ? cs.surface : AppColors.primaryDark;
     final appBarFg = _appBarLight ? cs.onSurface : Colors.white;
 
+    final statsAsync = ref.watch(userStatsProvider);
+    final recentAsync = ref.watch(recentSessionsProvider);
+    final authAsync = ref.watch(authProvider);
+
     return Scaffold(
-      // 하단 오버스크롤 = surface(흰색). 상단은 Stack으로 별도 처리
       backgroundColor: cs.surface,
       body: Stack(
         children: [
-          // 상단 오버스크롤 시 앱바·그래디언트와 색상 일치
           Container(height: 480, color: AppColors.primaryDark),
           CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          // ── App bar ───────────────────────────────────────
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: appBarBg,
-            foregroundColor: appBarFg,
-            scrolledUnderElevation: 0,
-            title: Text(
-              '프로필',
-              style: theme.textTheme.titleLarge?.copyWith(color: appBarFg),
-            ),
-            actions: [
-              IconButton(
-                icon: Icon(Icons.settings_outlined, color: appBarFg),
-                onPressed: () {},
-              ),
-            ],
-          ),
-
-          // ── Profile header ────────────────────────────────
-          SliverToBoxAdapter(
-            child: _ProfileHeader(isDark: isDark),
-          ),
-
-          // ── Body content — 그래디언트 하단과 50px 겹쳐 모서리 틈 제거
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -50),
-              child: Container(
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
+            controller: _scrollController,
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                backgroundColor: appBarBg,
+                foregroundColor: appBarFg,
+                scrolledUnderElevation: 0,
+                title: Text(
+                  '프로필',
+                  style:
+                      theme.textTheme.titleLarge?.copyWith(color: appBarFg),
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 74, 20, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Level badge ───────────────────────────
-                  _LevelCard(isDark: isDark),
-                  const SizedBox(height: 24),
-
-                  // ── Stats grid ────────────────────────────
-                  Text('활동 통계', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 6),
-                  _StatsGrid(isDark: isDark),
-                  const SizedBox(height: 24),
-
-                  // ── Badges ────────────────────────────────
-                  Text('획득한 배지', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  _BadgeRow(isDark: isDark),
-                  const SizedBox(height: 24),
-
-                  // ── Settings ──────────────────────────────
-                  Text('설정', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  _SettingsList(isDark: isDark, ref: ref),
+                actions: [
+                  IconButton(
+                    icon: Icon(Icons.settings_outlined, color: appBarFg),
+                    onPressed: () {},
+                  ),
                 ],
               ),
-            ),
-            ),
-          ),
-          SliverFillRemaining(
-            hasScrollBody: false,
-            fillOverscroll: true,
-            child: ColoredBox(color: cs.surface),
-          ),
-        ],
+
+              // ── Profile header ─────────────────────────────
+              SliverToBoxAdapter(
+                child: authAsync.when(
+                  data: (user) => statsAsync.when(
+                    data: (stats) => _ProfileHeader(
+                      name: user?.name ?? '플로깅 러너',
+                      email: user?.email ?? '',
+                      profileImageUrl: user?.profileImageUrl,
+                      activityCount: stats.totalSessions,
+                    ),
+                    loading: () => _ProfileHeader(
+                      name: user?.name ?? '플로깅 러너',
+                      email: user?.email ?? '',
+                      profileImageUrl: user?.profileImageUrl,
+                      activityCount: null,
+                    ),
+                    error: (e, st) => _ProfileHeader(
+                      name: user?.name ?? '플로깅 러너',
+                      email: user?.email ?? '',
+                      profileImageUrl: user?.profileImageUrl,
+                      activityCount: null,
+                    ),
+                  ),
+                  loading: () => const _ProfileHeaderSkeleton(),
+                  error: (e, st) => _ProfileHeader(
+                    name: '플로깅 러너',
+                    email: '',
+                    profileImageUrl: null,
+                    activityCount: null,
+                  ),
+                ),
+              ),
+
+              // ── Body ───────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -50),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(28),
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Stats grid ────────────────────
+                        Text('활동 통계', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 10),
+                        statsAsync.when(
+                          data: (stats) => _StatsGrid(
+                              stats: stats, isDark: isDark),
+                          loading: () => _StatsGridSkeleton(isDark: isDark),
+                          error: (e, _) => _ErrorCard(
+                              message: '통계를 불러오지 못했습니다.',
+                              onRetry: () => ref.invalidate(userStatsProvider)),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ── Level card (목업) ─────────────
+                        _LevelCard(isDark: isDark),
+                        const SizedBox(height: 24),
+
+                        // ── Badges (목업) ─────────────────
+                        Text('획득한 배지', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 12),
+                        _BadgeRow(isDark: isDark),
+                        const SizedBox(height: 24),
+
+                        // ── Recent sessions ───────────────
+                        Text('최근 플로깅', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 10),
+                        recentAsync.when(
+                          data: (sessions) => sessions.isEmpty
+                              ? _EmptyCard(
+                                  message: '아직 완료된 플로깅 기록이 없어요.',
+                                  isDark: isDark,
+                                )
+                              : _RecentSessionList(
+                                  sessions: sessions.take(3).toList(),
+                                  isDark: isDark,
+                                ),
+                          loading: () =>
+                              _SessionListSkeleton(isDark: isDark),
+                          error: (e, _) => _ErrorCard(
+                              message: '기록을 불러오지 못했습니다.',
+                              onRetry: () =>
+                                  ref.invalidate(recentSessionsProvider)),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ── Settings ──────────────────────
+                        Text('설정', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 12),
+                        _SettingsList(isDark: isDark, ref: ref),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                fillOverscroll: true,
+                child: ColoredBox(color: cs.surface),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+
 }
 
 // ── Profile header ────────────────────────────────────────────
 class _ProfileHeader extends StatelessWidget {
-  final bool isDark;
+  final String name;
+  final String email;
+  final String? profileImageUrl;
+  final int? activityCount;
 
-  const _ProfileHeader({required this.isDark});
+  const _ProfileHeader({
+    required this.name,
+    required this.email,
+    required this.profileImageUrl,
+    required this.activityCount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -141,107 +211,93 @@ class _ProfileHeader extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 36),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            AppColors.primaryDark,
-            AppColors.primary,
-          ],
-          stops: const [0.0, 1.0],
+          colors: [AppColors.primaryDark, AppColors.primary],
         ),
-        borderRadius: const BorderRadius.vertical(
-          bottom: Radius.circular(28),
-        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
         children: [
-            const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-            // Avatar
-            Stack(
-              children: [
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.secondary,
-                        AppColors.primary,
-                      ],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '🌿',
-                      style: TextStyle(fontSize: 36),
-                    ),
+          // Avatar
+          Stack(
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.secondary, AppColors.primary],
                   ),
                 ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: AppColors.accent,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt_rounded,
-                      size: 12,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                child: profileImageUrl != null
+                    ? ClipOval(
+                        child: Image.network(
+                          profileImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, e, st) => const Center(
+                              child: Text('🌿',
+                                  style: TextStyle(fontSize: 36))),
+                        ),
+                      )
+                    : const Center(
+                        child: Text('🌿', style: TextStyle(fontSize: 36))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
+          Text(
+            name,
+            style: theme.textTheme.titleLarge?.copyWith(
+                color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          if (email.isNotEmpty)
             Text(
-              '플로깅 러너',
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'runner@example.com',
+              email,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: Colors.white.withValues(alpha: 0.7)),
             ),
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-            // Follow stats
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _FollowStat(label: '활동 횟수', value: '12'),
-                Container(
-                  width: 1,
-                  height: 24,
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  color: Colors.white.withValues(alpha: 0.3),
-                ),
-                _FollowStat(label: '팔로워', value: '28'),
-                Container(
-                  width: 1,
-                  height: 24,
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  color: Colors.white.withValues(alpha: 0.3),
-                ),
-                _FollowStat(label: '팔로잉', value: '15'),
-              ],
-            ),
-          ],
+          // Activity count
+          _FollowStat(
+            label: '활동 횟수',
+            value: activityCount != null ? '$activityCount' : '-',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeaderSkeleton extends StatelessWidget {
+  const _ProfileHeaderSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.primaryDark, AppColors.primary],
         ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
     );
   }
 }
@@ -277,7 +333,136 @@ class _FollowStat extends StatelessWidget {
   }
 }
 
-// ── Level card ────────────────────────────────────────────────
+// ── Stats grid ────────────────────────────────────────────────
+class _StatsGrid extends StatelessWidget {
+  final UserStatsEntity stats;
+  final bool isDark;
+
+  const _StatsGrid({required this.stats, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.5,
+      children: [
+        _GridStatCard(
+          label: '총 거리',
+          value: '${stats.totalDistanceKm.toStringAsFixed(1)} km',
+          icon: Icons.route_rounded,
+          color: AppColors.primary,
+          isDark: isDark,
+        ),
+        _GridStatCard(
+          label: '수거한 쓰레기',
+          value: '${stats.totalTrashCount}개',
+          icon: Icons.delete_outline_rounded,
+          color: AppColors.secondary,
+          isDark: isDark,
+        ),
+        _GridStatCard(
+          label: '활동 시간',
+          value: stats.formattedDuration,
+          icon: Icons.timer_outlined,
+          color: AppColors.accent,
+          isDark: isDark,
+        ),
+        _GridStatCard(
+          label: '절약한 CO₂',
+          value: '${stats.co2SavedKg.toStringAsFixed(1)} kg',
+          icon: Icons.eco_rounded,
+          color: AppColors.gold,
+          isDark: isDark,
+        ),
+      ],
+    );
+  }
+}
+
+class _StatsGridSkeleton extends StatelessWidget {
+  final bool isDark;
+  const _StatsGridSkeleton({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.5,
+      children: List.generate(
+        4,
+        (_) => Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.cardDark
+                : const Color(0xFFE5F0E8),
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GridStatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final bool isDark;
+
+  const _GridStatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(label, style: theme.textTheme.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Level card (목업) ─────────────────────────────────────────
 class _LevelCard extends StatelessWidget {
   final bool isDark;
 
@@ -293,10 +478,7 @@ class _LevelCard extends StatelessWidget {
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
-          width: 1,
+          color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
         ),
       ),
       child: Column(
@@ -305,8 +487,8 @@ class _LevelCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.gold.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(100),
@@ -367,108 +549,16 @@ class _LevelCard extends StatelessWidget {
   }
 }
 
-// ── Stats grid ────────────────────────────────────────────────
-class _StatsGrid extends StatelessWidget {
-  final bool isDark;
-
-  const _StatsGrid({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      crossAxisCount: 2,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.5,
-      children: [
-        _GridStatCard(
-          label: '총 거리',
-          value: '24.8 km',
-          icon: Icons.route_rounded,
-          color: AppColors.primary,
-          isDark: isDark,
-        ),
-        _GridStatCard(
-          label: '수거한 쓰레기',
-          value: '156개',
-          icon: Icons.delete_outline_rounded,
-          color: AppColors.secondary,
-          isDark: isDark,
-        ),
-        _GridStatCard(
-          label: '활동 시간',
-          value: '8h 42m',
-          icon: Icons.timer_outlined,
-          color: AppColors.accent,
-          isDark: isDark,
-        ),
-        _GridStatCard(
-          label: '절약한 CO₂',
-          value: '3.2 kg',
-          icon: Icons.eco_rounded,
-          color: AppColors.gold,
-          isDark: isDark,
-        ),
-      ],
-    );
-  }
-}
-
-class _GridStatCard extends StatelessWidget {
-  final String label;
-  final String value;
+// ── Badge row (목업) ──────────────────────────────────────────
+class _BadgeData {
   final IconData icon;
+  final String label;
   final Color color;
-  final bool isDark;
 
-  const _GridStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Text(label, style: theme.textTheme.labelSmall),
-        ],
-      ),
-    );
-  }
+  const _BadgeData(
+      {required this.icon, required this.label, required this.color});
 }
 
-// ── Badge row ─────────────────────────────────────────────────
 class _BadgeRow extends StatelessWidget {
   final bool isDark;
 
@@ -482,7 +572,9 @@ class _BadgeRow extends StatelessWidget {
         label: '5연속',
         color: AppColors.accent),
     _BadgeData(
-        icon: Icons.emoji_events_rounded, label: '거리왕', color: AppColors.gold),
+        icon: Icons.emoji_events_rounded,
+        label: '거리왕',
+        color: AppColors.gold),
     _BadgeData(
         icon: Icons.camera_alt_rounded,
         label: '기록왕',
@@ -491,59 +583,253 @@ class _BadgeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SizedBox(
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: _badges.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, i) =>
-            _BadgeTile(badge: _badges[i], isDark: isDark),
+        separatorBuilder: (context, i) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final badge = _badges[i];
+          return Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: badge.color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: badge.color.withValues(alpha: 0.4),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(badge.icon, size: 26, color: badge.color),
+              ),
+              const SizedBox(height: 6),
+              Text(badge.label, style: theme.textTheme.labelSmall),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _BadgeData {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _BadgeData(
-      {required this.icon, required this.label, required this.color});
-}
-
-class _BadgeTile extends StatelessWidget {
-  final _BadgeData badge;
+// ── Recent sessions list ──────────────────────────────────────
+class _RecentSessionList extends StatelessWidget {
+  final List<TrackingSessionEntity> sessions;
   final bool isDark;
 
-  const _BadgeTile({required this.badge, required this.isDark});
+  const _RecentSessionList(
+      {required this.sessions, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: sessions
+          .map((s) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _SessionCard(session: s, isDark: isDark),
+              ))
+          .toList(),
+    );
+  }
+}
+
+class _SessionCard extends StatelessWidget {
+  final TrackingSessionEntity session;
+  final bool isDark;
+
+  const _SessionCard({required this.session, required this.isDark});
+
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inDays == 0) return '오늘 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays == 1) return '어제';
+    return '${dt.month}/${dt.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = session.locationDescription ??
+        session.locationLandmarkName ??
+        '플로깅 기록';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, AppColors.secondary],
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.directions_run_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 2),
+                Text(_formatDate(session.startedAt),
+                    style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _MiniStat(
+                icon: Icons.route_rounded,
+                value:
+                    '${session.distanceKm.toStringAsFixed(2)}km',
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 2),
+              _MiniStat(
+                icon: Icons.delete_outline_rounded,
+                value: '${session.totalTrashCount}개',
+                color: AppColors.secondary,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SessionListSkeleton extends StatelessWidget {
+  final bool isDark;
+  const _SessionListSkeleton({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        2,
+        (_) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            height: 76,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.cardDark
+                  : const Color(0xFFE5F0E8),
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final Color color;
+
+  const _MiniStat(
+      {required this.icon, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Empty / Error cards ───────────────────────────────────────
+class _EmptyCard extends StatelessWidget {
+  final String message;
+  final bool isDark;
+
+  const _EmptyCard({required this.message, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Column(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: badge.color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: badge.color.withValues(alpha: 0.4),
-              width: 1.5,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
+        ),
+      ),
+      child: Center(
+        child: Text(message,
+            style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Text(message,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.accent)),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onRetry,
+            child: Text(
+              '다시 시도',
+              style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700),
             ),
           ),
-          child: Icon(badge.icon, size: 26, color: badge.color),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          badge.label,
-          style: theme.textTheme.labelSmall,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -557,16 +843,14 @@ class _SettingsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final divColor =
+        isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8);
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
-          width: 1,
-        ),
+        border: Border.all(color: divColor),
       ),
       child: Column(
         children: [
@@ -575,34 +859,19 @@ class _SettingsList extends StatelessWidget {
             label: '프로필 편집',
             onTap: () {},
           ),
-          Divider(
-            height: 1,
-            color: isDark
-                ? const Color(0xFF2A4035)
-                : const Color(0xFFE5F0E8),
-          ),
+          Divider(height: 1, color: divColor),
           _SettingTile(
             icon: Icons.notifications_none_rounded,
             label: '알림 설정',
             onTap: () {},
           ),
-          Divider(
-            height: 1,
-            color: isDark
-                ? const Color(0xFF2A4035)
-                : const Color(0xFFE5F0E8),
-          ),
+          Divider(height: 1, color: divColor),
           _SettingTile(
             icon: Icons.privacy_tip_outlined,
             label: '개인정보처리방침',
             onTap: () {},
           ),
-          Divider(
-            height: 1,
-            color: isDark
-                ? const Color(0xFF2A4035)
-                : const Color(0xFFE5F0E8),
-          ),
+          Divider(height: 1, color: divColor),
           _SettingTile(
             icon: Icons.logout_rounded,
             label: '로그아웃',
@@ -651,11 +920,9 @@ class _SettingTile extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant),
           ],
         ),
       ),

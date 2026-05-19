@@ -1,4 +1,5 @@
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:meta_plogging/features/plogging/domain/entities/session_photo_entity.dart';
 
 enum TrackingStatus { active, paused, completed, expired }
 
@@ -119,19 +120,25 @@ class TrashItem {
 
   int get estimatedCount => count ?? level?.representativeCount ?? 0;
 
+  // 백엔드 구조: {category, amount: {level?, count?}}
   Map<String, dynamic> toJson() => {
         'category': category.apiValue,
-        if (level != null) 'level': level!.apiValue,
-        if (count != null) 'count': count,
+        'amount': {
+          if (level != null) 'level': level!.apiValue,
+          if (count != null) 'count': count,
+        },
       };
 
-  factory TrashItem.fromJson(Map<String, dynamic> json) => TrashItem(
-        category: TrashCategory.fromApi(json['category'] as String),
-        level: json['level'] != null
-            ? TrashAmountLevel.fromApi(json['level'] as String)
-            : null,
-        count: json['count'] as int?,
-      );
+  factory TrashItem.fromJson(Map<String, dynamic> json) {
+    final amount = json['amount'] as Map<String, dynamic>? ?? {};
+    return TrashItem(
+      category: TrashCategory.fromApi(json['category'] as String),
+      level: amount['level'] != null
+          ? TrashAmountLevel.fromApi(amount['level'] as String)
+          : null,
+      count: amount['count'] as int?,
+    );
+  }
 }
 
 class TrackingSessionEntity {
@@ -147,6 +154,7 @@ class TrackingSessionEntity {
   final String? locationDescription;
   final List<TrashItem> trashItems;
   final int pauseDurationSeconds;
+  final List<SessionPhotoEntity> photos;
 
   const TrackingSessionEntity({
     required this.id,
@@ -161,6 +169,7 @@ class TrackingSessionEntity {
     this.locationDescription,
     required this.trashItems,
     this.pauseDurationSeconds = 0,
+    this.photos = const [],
   });
 
   double get distanceKm => distanceMeters / 1000;

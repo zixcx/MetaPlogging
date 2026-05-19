@@ -69,8 +69,11 @@ class _PostCardState extends State<PostCard>
         ),
 
         // ── Images ────────────────────────────────────────────
-        if (post.imageMocks.isNotEmpty)
-          _ImageCarousel(imageMocks: post.imageMocks),
+        if (post.imageUrls.isNotEmpty || post.imageMocks.isNotEmpty)
+          _ImageCarousel(
+            imageUrls: post.imageUrls,
+            imageMocks: post.imageMocks,
+          ),
 
         // ── Activity stats ────────────────────────────────────
         if (post.activityStats != null)
@@ -228,9 +231,13 @@ class _AuthorRow extends StatelessWidget {
 
 // ── Image carousel ─────────────────────────────────────────────
 class _ImageCarousel extends StatefulWidget {
+  final List<String> imageUrls;
   final List<String> imageMocks;
 
-  const _ImageCarousel({required this.imageMocks});
+  const _ImageCarousel({
+    required this.imageUrls,
+    required this.imageMocks,
+  });
 
   @override
   State<_ImageCarousel> createState() => _ImageCarouselState();
@@ -248,7 +255,9 @@ class _ImageCarouselState extends State<_ImageCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final count = widget.imageMocks.length;
+    final useReal = widget.imageUrls.isNotEmpty;
+    final count =
+        useReal ? widget.imageUrls.length : widget.imageMocks.length;
 
     return Column(
       children: [
@@ -258,8 +267,9 @@ class _ImageCarouselState extends State<_ImageCarousel> {
             controller: _pageController,
             itemCount: count,
             onPageChanged: (i) => setState(() => _currentPage = i),
-            itemBuilder: (_, i) =>
-                _MockImageWidget(mockKey: widget.imageMocks[i]),
+            itemBuilder: (context, i) => useReal
+                ? _NetworkImageWidget(url: widget.imageUrls[i])
+                : _MockImageWidget(mockKey: widget.imageMocks[i]),
           ),
         ),
         if (count > 1)
@@ -274,6 +284,39 @@ class _ImageCarouselState extends State<_ImageCarousel> {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _NetworkImageWidget extends StatelessWidget {
+  final String url;
+
+  const _NetworkImageWidget({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, st) => Container(
+        color: const Color(0xFF1E3528),
+        child: const Center(
+          child: Icon(Icons.broken_image_outlined,
+              size: 48, color: Colors.white30),
+        ),
+      ),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          color: const Color(0xFF1E3528),
+          child: const Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.primary,
+            ),
+          ),
+        );
+      },
     );
   }
 }

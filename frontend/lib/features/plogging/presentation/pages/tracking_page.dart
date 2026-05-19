@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
+import 'package:meta_plogging/features/plogging/presentation/providers/sessions_provider.dart';
 import 'package:meta_plogging/features/plogging/presentation/providers/tracking_provider.dart';
 import 'package:meta_plogging/features/plogging/presentation/widgets/end_session_sheet.dart';
-import 'package:meta_plogging/features/plogging/presentation/widgets/trash_mark_sheet.dart';
 
 class TrackingPage extends ConsumerStatefulWidget {
   const TrackingPage({super.key});
@@ -15,6 +15,7 @@ class TrackingPage extends ConsumerStatefulWidget {
 
 class _TrackingPageState extends ConsumerState<TrackingPage> {
   NaverMapController? _mapController;
+  bool _isFollowing = true;
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +24,6 @@ class _TrackingPageState extends ConsumerState<TrackingPage> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // 에러 처리
     ref.listen<TrackingState>(trackingProvider, (prev, next) {
       final err = next.error;
       if (err != null) {
@@ -35,69 +35,139 @@ class _TrackingPageState extends ConsumerState<TrackingPage> {
     });
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1A14) : const Color(0xFFF0F7F2),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── 상단 통계 바 ─────────────────────────────────
-            _StatsBar(state: state, isDark: isDark),
-
-            // ── 지도 ─────────────────────────────────────────
-            Expanded(
-              child: Stack(
-                children: [
-                  NaverMap(
-                    options: NaverMapViewOptions(
-                      initialCameraPosition: NCameraPosition(
-                        target: state.currentPosition ??
-                            const NLatLng(37.5665, 126.9780),
-                        zoom: 16,
-                      ),
-                      locationButtonEnable: true,
-                      consumeSymbolTapEvents: false,
+      backgroundColor:
+          isDark ? const Color(0xFF0F1A14) : const Color(0xFFF0F7F2),
+      extendBodyBehindAppBar: true,
+      body: Column(
+        children: [
+          // ── 지도 (상단 풀블리드 — Dynamic Island 아래까지) ──
+          Expanded(
+            child: Stack(
+              children: [
+                NaverMap(
+                  options: NaverMapViewOptions(
+                    initialCameraPosition: NCameraPosition(
+                      target: state.currentPosition ??
+                          const NLatLng(37.5665, 126.9780),
+                      zoom: 16,
                     ),
-                    onMapReady: (controller) {
-                      _mapController = controller;
-                      controller.setLocationTrackingMode(
-                        NLocationTrackingMode.follow,
+                    locationButtonEnable: false,
+                    consumeSymbolTapEvents: false,
+                  ),
+                  onMapReady: (controller) {
+                    _mapController = controller;
+                    controller.setLocationTrackingMode(
+                      NLocationTrackingMode.follow,
+                    );
+                  },
+                  onCameraChange: (reason, animated) {
+                    if (reason == NCameraUpdateReason.gesture &&
+                        _isFollowing) {
+                      setState(() => _isFollowing = false);
+                      _mapController?.setLocationTrackingMode(
+                        NLocationTrackingMode.noFollow,
                       );
-                    },
-                    forceGesture: false,
-                  ),
+                    }
+                  },
+                  forceGesture: false,
+                ),
 
-                  // 경로 오버레이는 controller 통해 갱신
-                  _MapOverlayUpdater(
-                    controller: _mapController,
-                    state: state,
+                // 경로·마커 오버레이 갱신
+                _MapOverlayUpdater(
+                  controller: _mapController,
+                  state: state,
+                ),
+
+                // ── 내 위치 따라가기 버튼 ──────────────────────
+                if (!_isFollowing)
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _isFollowing = true);
+                        _mapController?.setLocationTrackingMode(
+                          NLocationTrackingMode.follow,
+                        );
+                      },
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.18),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.my_location_rounded,
+                          color: AppColors.primary,
+                          size: 22,
+                        ),
+                      ),
+                    ),
                   ),
+              ],
+            ),
+          ),
+
+          // ── 하단 컨트롤 + 통계 (홈 인디케이터 위 safe area 확보) ──
+          ColoredBox(
+            color: isDark ? const Color(0xFF0A1410) : const Color(0xFFF8FBF9),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _BottomControls(
+                    state: state,
+                    isDark: isDark,
+                    onPause: notifier.pauseSession,
+                    onResume: notifier.resumeSession,
+                    onEnd: () => _showEndSheet(context, state, notifier),
+                    onDiscard: () => _confirmDiscard(context, notifier),
+                  ),
+                  _StatsBar(state: state, isDark: isDark),
                 ],
               ),
             ),
-
-            // ── 하단 버튼 ─────────────────────────────────────
-            _BottomControls(
-              state: state,
-              isDark: isDark,
-              onPause: notifier.pauseSession,
-              onResume: notifier.resumeSession,
-              onEnd: () => _showEndSheet(context, state, notifier),
-              onTrash: () => _showTrashSheet(context, notifier),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  void _showTrashSheet(BuildContext ctx, TrackingNotifier notifier) {
-    showModalBottomSheet<void>(
+  Future<void> _confirmDiscard(
+      BuildContext ctx, TrackingNotifier notifier) async {
+    final confirmed = await showDialog<bool>(
       context: ctx,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => TrashMarkSheet(
-        onConfirm: (cat) => notifier.addTrashPoint(cat),
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('기록 삭제'),
+        content: const Text('현재 플로깅 기록을 저장하지 않고 삭제할까요?\n삭제된 기록은 복구할 수 없습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('삭제'),
+          ),
+        ],
       ),
     );
+    if (confirmed == true) {
+      final success = await notifier.discardSession();
+      if (success && ctx.mounted) {
+        Navigator.of(ctx, rootNavigator: true).pop();
+      }
+    }
   }
 
   void _showEndSheet(
@@ -115,7 +185,8 @@ class _TrackingPageState extends ConsumerState<TrackingPage> {
             locationDescription: locationDescription,
           );
           if (session != null && ctx.mounted) {
-            Navigator.of(ctx).pop(); // TrackingPage 닫기
+            ref.read(completedSessionsProvider.notifier).refresh();
+            Navigator.of(ctx).pop();
           }
         },
       ),
@@ -158,42 +229,14 @@ class _MapOverlayUpdaterState extends ConsumerState<_MapOverlayUpdater> {
       await ctrl.addOverlay(polyline);
     }
 
-    // 쓰레기 마커
-    if (!mounted) return;
-    final ctx = context;
-    for (final tp in widget.state.trashPoints) {
-      // ignore: use_build_context_synchronously
-      final icon = await NOverlayImage.fromWidget(
-        widget: const Icon(
-          Icons.delete_rounded,
-          color: Colors.orange,
-          size: 24,
-        ),
-        size: const Size(24, 24),
-        context: ctx, // ignore: use_build_context_synchronously
-      );
-      final marker = NMarker(
-        id: tp.id,
-        position: NLatLng(tp.lat, tp.lng),
-        icon: icon,
-      );
-      await ctrl.addOverlay(marker);
-    }
-
-    // 카메라 현재 위치 따라가기
-    final pos = widget.state.currentPosition;
-    if (pos != null && widget.state.isActive) {
-      await ctrl.updateCamera(
-        NCameraUpdate.withParams(target: pos),
-      );
-    }
+    // 카메라 이동 없음 — NLocationTrackingMode.follow 가 담당
   }
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
-// ── 상단 통계 바 ───────────────────────────────────────────────
+// ── 하단 통계 바 ────────────────────────────────────────────────
 class _StatsBar extends StatelessWidget {
   final TrackingState state;
   final bool isDark;
@@ -203,18 +246,15 @@ class _StatsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: isDark ? const Color(0xFF0A1410) : const Color(0xFFF8FBF9),
+        border: Border(
+          top: BorderSide(color: cs.outlineVariant),
+        ),
       ),
       child: Row(
         children: [
@@ -222,52 +262,148 @@ class _StatsBar extends StatelessWidget {
             icon: Icons.timer_outlined,
             value: state.formattedTime,
             label: '시간',
-            color: AppColors.primary,
           ),
           _StatChip(
             icon: Icons.route_rounded,
             value: '${state.distanceKm.toStringAsFixed(2)}km',
             label: '거리',
-            color: AppColors.secondary,
           ),
           _StatChip(
-            icon: Icons.delete_outline_rounded,
-            value: '${state.totalTrashCount}개',
-            label: '수거',
-            color: AppColors.accent,
+            icon: Icons.photo_library_outlined,
+            value: '${state.photoCount}장',
+            label: '사진',
           ),
           const Spacer(),
-          // 상태 표시
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: state.isPaused
-                  ? Colors.orange.withValues(alpha: 0.12)
-                  : AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(100),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          if (state.isPaused)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '일시정지',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            const _PingBadge(),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Ping 애니메이션 뱃지 ──────────────────────────────────────
+class _PingBadge extends StatefulWidget {
+  const _PingBadge();
+
+  @override
+  State<_PingBadge> createState() => _PingBadgeState();
+}
+
+class _PingBadgeState extends State<_PingBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+  late Animation<double> _opacity;
+
+  static const _green = Color(0xFF22C55E);
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+
+    _scale = Tween<double>(begin: 1.0, end: 2.4).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+    );
+    _opacity = Tween<double>(begin: 0.8, end: 0.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _green.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: state.isPaused ? Colors.orange : AppColors.primary,
+                // 퍼져나가는 ping 링
+                AnimatedBuilder(
+                  animation: _ctrl,
+                  builder: (context, child) => Transform.scale(
+                    scale: _scale.value,
+                    child: Opacity(
+                      opacity: _opacity.value,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _green,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 5),
-                Text(
-                  state.isPaused ? '일시정지' : '기록 중',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color:
-                        state.isPaused ? Colors.orange : AppColors.primary,
-                    fontWeight: FontWeight.w700,
+                // 고정 dot
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _green,
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '기록 중',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: _green,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -280,18 +416,17 @@ class _StatChip extends StatelessWidget {
   final IconData icon;
   final String value;
   final String label;
-  final Color color;
 
   const _StatChip({
     required this.icon,
     required this.value,
     required this.label,
-    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 16),
       child: Column(
@@ -299,12 +434,12 @@ class _StatChip extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 12, color: color),
+              Icon(icon, size: 12, color: cs.primary),
               const SizedBox(width: 3),
               Text(
                 value,
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: color,
+                  color: cs.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -313,7 +448,7 @@ class _StatChip extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+              color: cs.onSurfaceVariant,
             ),
           ),
         ],
@@ -329,7 +464,7 @@ class _BottomControls extends StatelessWidget {
   final VoidCallback onPause;
   final VoidCallback onResume;
   final VoidCallback onEnd;
-  final VoidCallback onTrash;
+  final VoidCallback onDiscard;
 
   const _BottomControls({
     required this.state,
@@ -337,15 +472,13 @@ class _BottomControls extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onEnd,
-    required this.onTrash,
+    required this.onDiscard,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         boxShadow: [
@@ -358,47 +491,31 @@ class _BottomControls extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 쓰레기 마킹
-          _CircleButton(
-            icon: Icons.delete_outline_rounded,
-            label: '쓰레기',
-            color: AppColors.accent,
-            onTap: state.isActive ? onTrash : null,
-          ),
-          const SizedBox(width: 12),
-
           // 일시정지 / 재개
           _CircleButton(
             icon: state.isPaused
                 ? Icons.play_arrow_rounded
                 : Icons.pause_rounded,
             label: state.isPaused ? '재개' : '일시정지',
-            color: Colors.orange,
             onTap: state.isPaused ? onResume : onPause,
           ),
           const Spacer(),
 
-          // 종료
-          GestureDetector(
+          // 삭제 (저장 안 함)
+          _CircleButton(
+            icon: Icons.delete_forever_rounded,
+            label: '삭제',
+            onTap: onDiscard,
+            isDestructive: true,
+          ),
+          const SizedBox(width: 12),
+
+          // 저장
+          _CircleButton(
+            icon: Icons.check_rounded,
+            label: '저장',
             onTap: onEnd,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 28, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(100),
-                border: Border.all(
-                  color: AppColors.accent.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Text(
-                '종료',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: AppColors.accent,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+            isPrimary: true,
           ),
         ],
       ),
@@ -409,20 +526,45 @@ class _BottomControls extends StatelessWidget {
 class _CircleButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
   final VoidCallback? onTap;
+  final bool isPrimary;
+  final bool isDestructive;
 
   const _CircleButton({
     required this.icon,
     required this.label,
-    required this.color,
     this.onTap,
+    this.isPrimary = false,
+    this.isDestructive = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final enabled = onTap != null;
+
+    final Color bgColor;
+    final Color iconColor;
+    final Color borderColor;
+
+    if (!enabled) {
+      bgColor = cs.surfaceContainerHighest.withValues(alpha: 0.4);
+      iconColor = cs.onSurfaceVariant;
+      borderColor = cs.outlineVariant;
+    } else if (isPrimary) {
+      bgColor = cs.primary;
+      iconColor = cs.onPrimary;
+      borderColor = cs.primary;
+    } else if (isDestructive) {
+      bgColor = cs.errorContainer.withValues(alpha: 0.6);
+      iconColor = cs.error;
+      borderColor = cs.error.withValues(alpha: 0.4);
+    } else {
+      bgColor = cs.primaryContainer.withValues(alpha: 0.6);
+      iconColor = cs.primary;
+      borderColor = cs.outline;
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -434,28 +576,16 @@ class _CircleButton extends StatelessWidget {
             height: 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: enabled
-                  ? color.withValues(alpha: 0.12)
-                  : Colors.grey.withValues(alpha: 0.08),
-              border: Border.all(
-                color: enabled
-                    ? color.withValues(alpha: 0.4)
-                    : Colors.grey.withValues(alpha: 0.2),
-              ),
+              color: bgColor,
+              border: Border.all(color: borderColor),
             ),
-            child: Icon(
-              icon,
-              color: enabled ? color : Colors.grey,
-              size: 24,
-            ),
+            child: Icon(icon, color: iconColor, size: 24),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: enabled
-                  ? theme.colorScheme.onSurface
-                  : Colors.grey,
+              color: enabled ? cs.onSurface : cs.onSurfaceVariant,
             ),
           ),
         ],

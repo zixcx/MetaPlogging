@@ -17,6 +17,8 @@ class PostEntity {
   final String authorName;
   final String authorEmoji;
   final List<String> imageMocks;
+  final List<String> imageUrls;
+  final String? trackingSessionId;
   final String? caption;
   final PostActivityStats? activityStats;
   final int likeCount;
@@ -33,6 +35,8 @@ class PostEntity {
     required this.authorName,
     required this.authorEmoji,
     this.imageMocks = const [],
+    this.imageUrls = const [],
+    this.trackingSessionId,
     this.caption,
     this.activityStats,
     this.likeCount = 0,
@@ -56,6 +60,8 @@ class PostEntity {
         authorName: authorName,
         authorEmoji: authorEmoji,
         imageMocks: imageMocks,
+        imageUrls: imageUrls,
+        trackingSessionId: trackingSessionId,
         caption: caption,
         activityStats: activityStats,
         likeCount: likeCount ?? this.likeCount,

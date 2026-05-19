@@ -2,7 +2,6 @@ import 'package:meta_plogging/features/plogging/domain/entities/tracking_session
 
 class TrashPointEntity {
   final String id;
-  final String sessionId;
   final double lat;
   final double lng;
   final TrashCategory category;
@@ -11,7 +10,6 @@ class TrashPointEntity {
 
   const TrashPointEntity({
     required this.id,
-    required this.sessionId,
     required this.lat,
     required this.lng,
     required this.category,

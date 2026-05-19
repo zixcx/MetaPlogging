@@ -9,16 +9,20 @@ import 'package:meta_plogging/features/auth/presentation/pages/register_page.dar
 import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
 import 'package:meta_plogging/features/feed/presentation/pages/feed_page.dart';
 import 'package:meta_plogging/features/home/presentation/pages/home_page.dart';
+import 'package:meta_plogging/features/plogging/presentation/pages/all_sessions_page.dart';
 import 'package:meta_plogging/features/plogging/presentation/pages/plogging_page.dart';
+import 'package:meta_plogging/features/plogging/presentation/pages/session_detail_page.dart';
 import 'package:meta_plogging/features/profile/presentation/pages/profile_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-
+  // ref.watch 대신 redirect 콜백 안에서 ref.read 사용 —
+  // auth 상태 변경 시 GoRouter 인스턴스가 재생성되지 않도록 방지.
+  // refreshListenable이 redirect를 재평가하는 역할을 담당.
   return GoRouter(
     initialLocation: AppRoutes.home,
     refreshListenable: _AuthStateListenable(ref),
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       if (authState.isLoading) return null;
 
       final isLoggedIn = authState.value != null;
@@ -63,6 +67,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.plogging,
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: PloggingPage()),
+            routes: [
+              GoRoute(
+                path: 'history',
+                builder: (context, state) => const AllSessionsPage(),
+              ),
+              GoRoute(
+                path: 'sessions/:id',
+                builder: (context, state) => SessionDetailPage(
+                  sessionId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: AppRoutes.profile,
@@ -79,6 +95,8 @@ class AppRoutes {
   static const String home = '/';
   static const String feed = '/feed';
   static const String plogging = '/plogging';
+  static const String allSessions = '/plogging/history';
+  static String sessionDetail(String id) => '/plogging/sessions/$id';
   static const String profile = '/profile';
 
   static const String landing = '/auth/landing';

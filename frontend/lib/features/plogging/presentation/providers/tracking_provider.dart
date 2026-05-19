@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:meta_plogging/features/plogging/data/repositories/tracking_repository_impl.dart';
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
-import 'package:meta_plogging/features/plogging/domain/entities/trash_point_entity.dart';
 import 'package:meta_plogging/features/plogging/domain/repositories/tracking_repository.dart';
 
 // ── State ──────────────────────────────────────────────────────
@@ -13,7 +12,6 @@ import 'package:meta_plogging/features/plogging/domain/repositories/tracking_rep
 class TrackingState {
   final TrackingSessionEntity? session;
   final List<NLatLng> path;
-  final List<TrashPointEntity> trashPoints;
   final NLatLng? currentPosition;
   final int elapsedSeconds;
   final bool isLoading;
@@ -22,7 +20,6 @@ class TrackingState {
   const TrackingState({
     this.session,
     this.path = const [],
-    this.trashPoints = const [],
     this.currentPosition,
     this.elapsedSeconds = 0,
     this.isLoading = false,
@@ -35,7 +32,7 @@ class TrackingState {
 
   double get distanceKm => (session?.distanceMeters ?? 0) / 1000;
 
-  int get totalTrashCount => session?.totalTrashCount ?? 0;
+  int get photoCount => session?.photos.length ?? 0;
 
   String get formattedTime {
     final s = elapsedSeconds;
@@ -47,7 +44,6 @@ class TrackingState {
   TrackingState copyWith({
     TrackingSessionEntity? session,
     List<NLatLng>? path,
-    List<TrashPointEntity>? trashPoints,
     NLatLng? currentPosition,
     int? elapsedSeconds,
     bool? isLoading,
@@ -56,7 +52,6 @@ class TrackingState {
       TrackingState(
         session: session ?? this.session,
         path: path ?? this.path,
-        trashPoints: trashPoints ?? this.trashPoints,
         currentPosition: currentPosition ?? this.currentPosition,
         elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
         isLoading: isLoading ?? this.isLoading,
@@ -76,7 +71,7 @@ class TrackingNotifier extends Notifier<TrackingState> {
   @override
   TrackingState build() {
     ref.onDispose(_stopLocalTimerAndGps);
-    _checkActiveSession();
+    Future.microtask(_checkActiveSession);
     return const TrackingState();
   }
 
@@ -123,7 +118,6 @@ class TrackingNotifier extends Notifier<TrackingState> {
       state = state.copyWith(
         session: session,
         path: [],
-        trashPoints: [],
         elapsedSeconds: 0,
         isLoading: false,
       );
@@ -180,24 +174,6 @@ class TrackingNotifier extends Notifier<TrackingState> {
     }
   }
 
-  Future<void> addTrashPoint(TrashCategory category, {String? note}) async {
-    final id = state.session?.id;
-    final pos = state.currentPosition;
-    if (id == null || pos == null) return;
-    try {
-      final point = await _repo.addTrashPoint(
-        id,
-        lat: pos.latitude,
-        lng: pos.longitude,
-        category: category,
-        note: note,
-      );
-      state = state.copyWith(trashPoints: [...state.trashPoints, point]);
-    } catch (e) {
-      state = state.copyWith(error: e.toString());
-    }
-  }
-
   void _startLocalTimerAndGps() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state.isActive) {
@@ -216,7 +192,7 @@ class TrackingNotifier extends Notifier<TrackingState> {
       final pos = state.currentPosition;
       final id = state.session?.id;
       if (pos != null && id != null && state.isActive) {
-        _repo.addPoint(id, pos.latitude, pos.longitude);
+        _repo.addPoint(id, pos.latitude, pos.longitude).catchError((_) {});
       }
     });
   }
@@ -236,6 +212,21 @@ class TrackingNotifier extends Notifier<TrackingState> {
       currentPosition: latLng,
       path: [...state.path, latLng],
     );
+  }
+
+  Future<bool> discardSession() async {
+    final id = state.session?.id;
+    if (id == null) return false;
+    _stopLocalTimerAndGps();
+    state = state.copyWith(isLoading: true);
+    try {
+      await _repo.deleteSession(id);
+      state = const TrackingState();
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
+    }
   }
 
   void clearError() => state = state.copyWith(error: null);

@@ -1,5 +1,4 @@
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
-import 'package:meta_plogging/features/plogging/domain/entities/trash_point_entity.dart';
 
 abstract class TrackingRepository {
   Future<TrackingSessionEntity> startSession();
@@ -14,14 +13,7 @@ abstract class TrackingRepository {
     String? locationLandmarkName,
     String? locationDescription,
   });
-  Future<List<TrackingSessionEntity>> getSessions({int page = 1});
+  Future<List<TrackingSessionEntity>> getSessions({int limit, int offset});
   Future<TrackingSessionEntity> getSession(String sessionId);
-  Future<TrashPointEntity> addTrashPoint(
-    String sessionId, {
-    required double lat,
-    required double lng,
-    required TrashCategory category,
-    String? note,
-  });
-  Future<List<TrashPointEntity>> getTrashPoints(String sessionId);
+  Future<void> deleteSession(String sessionId);
 }

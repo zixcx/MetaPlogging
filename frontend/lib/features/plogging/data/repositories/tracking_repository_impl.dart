@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/features/plogging/data/datasources/tracking_datasource.dart';
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
-import 'package:meta_plogging/features/plogging/domain/entities/trash_point_entity.dart';
 import 'package:meta_plogging/features/plogging/domain/repositories/tracking_repository.dart';
 
 final trackingRepositoryProvider = Provider<TrackingRepository>(
@@ -49,30 +48,17 @@ class TrackingRepositoryImpl implements TrackingRepository {
       );
 
   @override
-  Future<List<TrackingSessionEntity>> getSessions({int page = 1}) =>
-      _datasource.getSessions(page: page);
+  Future<List<TrackingSessionEntity>> getSessions({
+    int limit = 20,
+    int offset = 0,
+  }) =>
+      _datasource.getSessions(limit: limit, offset: offset);
 
   @override
   Future<TrackingSessionEntity> getSession(String sessionId) =>
       _datasource.getSession(sessionId);
 
   @override
-  Future<TrashPointEntity> addTrashPoint(
-    String sessionId, {
-    required double lat,
-    required double lng,
-    required TrashCategory category,
-    String? note,
-  }) =>
-      _datasource.addTrashPoint(
-        sessionId,
-        lat: lat,
-        lng: lng,
-        category: category,
-        note: note,
-      );
-
-  @override
-  Future<List<TrashPointEntity>> getTrashPoints(String sessionId) =>
-      _datasource.getTrashPoints(sessionId);
+  Future<void> deleteSession(String sessionId) =>
+      _datasource.deleteSession(sessionId);
 }

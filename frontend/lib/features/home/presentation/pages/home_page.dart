@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:meta_plogging/core/router/app_router.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
 import 'package:meta_plogging/features/auth/presentation/providers/auth_provider.dart';
+import 'package:meta_plogging/features/feed/presentation/widgets/create_post_sheet.dart';
+import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
+import 'package:meta_plogging/features/profile/presentation/providers/profile_provider.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -131,19 +134,17 @@ class HomePage extends ConsumerWidget {
 }
 
 // ── Greeting card ─────────────────────────────────────────────
-class _GreetingCard extends StatelessWidget {
+class _GreetingCard extends ConsumerWidget {
   final bool isDark;
   final String? userName;
 
   const _GreetingCard({required this.isDark, required this.userName});
 
-  // TODO: API 연결 시 GET /stats/community/today 로 교체
-  static const int _mockCommunityCount = 312;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final greeting = userName != null ? '안녕하세요, $userName님! 🌿' : '안녕하세요! 🌿';
+    final todayCount = ref.watch(platformSummaryProvider).asData?.value;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -176,7 +177,9 @@ class _GreetingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '오늘 $_mockCommunityCount명이\n함께 달리고 있어요',
+                  todayCount != null
+                      ? '오늘 $todayCount명이\n함께 달리고 있어요'
+                      : '오늘도 함께\n달려볼까요?',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -252,64 +255,69 @@ class _GreetingCard extends StatelessWidget {
 }
 
 // ── Stats card (unified) ──────────────────────────────────────
-class _StatsCard extends StatelessWidget {
+class _StatsCard extends ConsumerWidget {
   final bool isDark;
 
   const _StatsCard({required this.isDark});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statsAsync = ref.watch(userStatsProvider);
+    final dividerColor =
+        isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8);
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
-          width: 1,
-        ),
+        border: Border.all(color: dividerColor, width: 1),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            Expanded(
-              child: _StatItem(
-                label: '총 거리',
-                value: '24.8',
-                unit: 'km',
-                icon: Icons.route_rounded,
-                color: AppColors.primary,
+      child: statsAsync.when(
+        loading: () => const SizedBox(
+          height: 80,
+          child: Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        error: (e, st) => const SizedBox(
+          height: 80,
+          child: Center(child: Icon(Icons.error_outline, color: Colors.grey)),
+        ),
+        data: (stats) => IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _StatItem(
+                  label: '총 거리',
+                  value: stats.totalDistanceKm.toStringAsFixed(1),
+                  unit: 'km',
+                  icon: Icons.route_rounded,
+                  color: AppColors.primary,
+                ),
               ),
-            ),
-            VerticalDivider(
-              width: 1,
-              thickness: 1,
-              color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
-            ),
-            Expanded(
-              child: _StatItem(
-                label: '수거량',
-                value: '156',
-                unit: '개',
-                icon: Icons.delete_outline_rounded,
-                color: AppColors.secondary,
+              VerticalDivider(width: 1, thickness: 1, color: dividerColor),
+              Expanded(
+                child: _StatItem(
+                  label: '수거량',
+                  value: '${stats.totalTrashCount}',
+                  unit: '개',
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.secondary,
+                ),
               ),
-            ),
-            VerticalDivider(
-              width: 1,
-              thickness: 1,
-              color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
-            ),
-            Expanded(
-              child: _StatItem(
-                label: '활동 횟수',
-                value: '12',
-                unit: '회',
-                icon: Icons.local_fire_department_rounded,
-                color: AppColors.accent,
+              VerticalDivider(width: 1, thickness: 1, color: dividerColor),
+              Expanded(
+                child: _StatItem(
+                  label: '활동 횟수',
+                  value: '${stats.totalSessions}',
+                  unit: '회',
+                  icon: Icons.local_fire_department_rounded,
+                  color: AppColors.accent,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -391,6 +399,16 @@ class _QuickActions extends StatelessWidget {
 
   const _QuickActions({required this.isDark});
 
+  void _openCreateSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const CreatePostSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -405,7 +423,7 @@ class _QuickActions extends StatelessWidget {
         Expanded(
           flex: 3,
           child: GestureDetector(
-            onTap: () {},
+            onTap: () => _openCreateSheet(context),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
@@ -482,18 +500,81 @@ class _QuickActions extends StatelessWidget {
   }
 }
 
+// ── Weekly badge (지난주 대비 %) ───────────────────────────────
+class _WeeklyBadge extends StatelessWidget {
+  final double thisWeekKm;
+  final List<TrackingSessionEntity> sessions;
+  final DateTime weekStart;
+
+  const _WeeklyBadge({
+    required this.thisWeekKm,
+    required this.sessions,
+    required this.weekStart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lastWeekStart = weekStart.subtract(const Duration(days: 7));
+    final lastWeekKm = sessions
+        .where((s) {
+          final local = s.startedAt.toLocal();
+          return local.isAfter(lastWeekStart) && local.isBefore(weekStart);
+        })
+        .fold(0.0, (sum, s) => sum + s.distanceKm);
+
+    final String label;
+    final Color color;
+    final Color bg;
+
+    if (lastWeekKm == 0) {
+      label = '이전 기록 없음';
+      color = Theme.of(context).colorScheme.onSurfaceVariant;
+      bg = Theme.of(context).colorScheme.surfaceContainerHighest;
+    } else {
+      final pct = ((thisWeekKm - lastWeekKm) / lastWeekKm * 100).round();
+      label = pct >= 0 ? '+$pct%' : '$pct%';
+      color = pct >= 0 ? AppColors.primary : Theme.of(context).colorScheme.error;
+      bg = color.withValues(alpha: 0.1);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 // ── Weekly chart ──────────────────────────────────────────────
-class _WeeklyChart extends StatelessWidget {
+class _WeeklyChart extends ConsumerWidget {
   final bool isDark;
 
   const _WeeklyChart({required this.isDark});
 
   static const _days = ['월', '화', '수', '목', '금', '토', '일'];
-  static const _values = [0.4, 0.7, 0.3, 1.0, 0.6, 0.85, 0.0];
+
+  /// 이번 주 월요일 00:00:00 (로컬)
+  static DateTime _weekStart() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // weekday: 1=월 ... 7=일
+    return today.subtract(Duration(days: today.weekday - 1));
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final sessionsAsync = ref.watch(recentSessionsProvider);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
@@ -501,156 +582,169 @@ class _WeeklyChart extends StatelessWidget {
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
+          color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
           width: 1,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: sessionsAsync.when(
+        loading: () => const SizedBox(
+          height: 120,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        error: (_, __) => const SizedBox(height: 120),
+        data: (sessions) {
+          final weekStart = _weekStart();
+          final weekEnd = weekStart.add(const Duration(days: 7));
+          final todayIndex = DateTime.now().weekday - 1; // 0=월 ... 6=일
+
+          // 요일별 거리 합산 (km)
+          final distances = List<double>.filled(7, 0);
+          for (final s in sessions) {
+            final local = s.startedAt.toLocal();
+            if (local.isAfter(weekStart) && local.isBefore(weekEnd)) {
+              final dayIdx = local.weekday - 1;
+              distances[dayIdx] += s.distanceKm;
+            }
+          }
+
+          final totalKm = distances.fold(0.0, (a, b) => a + b);
+          final maxKm = distances.reduce((a, b) => a > b ? a : b);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '이번 주 3.2 km',
-                style: theme.textTheme.titleMedium,
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Text(
-                  '+12%',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '이번 주 ${totalKm.toStringAsFixed(1)} km',
+                    style: theme.textTheme.titleMedium,
                   ),
+                  _WeeklyBadge(
+                    thisWeekKm: totalKm,
+                    sessions: sessions,
+                    weekStart: weekStart,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 80,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: List.generate(7, (i) {
+                    final isToday = i == todayIndex;
+                    final km = distances[i];
+                    final ratio = maxKm > 0 ? km / maxKm : 0.0;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: FractionallySizedBox(
+                                heightFactor: ratio == 0 ? 0.08 : ratio,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: isToday
+                                        ? AppColors.primary
+                                        : km == 0
+                                            ? (isDark
+                                                ? const Color(0xFF2A4035)
+                                                : const Color(0xFFE5F0E8))
+                                            : AppColors.primary
+                                                .withValues(alpha: 0.35),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _days[i],
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: isToday
+                                    ? AppColors.primary
+                                    : theme.colorScheme.onSurfaceVariant,
+                                fontWeight: isToday
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (i) {
-                final isToday = i == 3; // Thursday highlighted
-                final val = _values[i];
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: FractionallySizedBox(
-                            heightFactor: val == 0 ? 0.08 : val,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isToday
-                                    ? AppColors.primary
-                                    : val == 0
-                                        ? (isDark
-                                            ? const Color(0xFF2A4035)
-                                            : const Color(0xFFE5F0E8))
-                                        : AppColors.primary
-                                            .withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _days[i],
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: isToday
-                                ? AppColors.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: isToday
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
 // ── Recent activity ───────────────────────────────────────────
-class _RecentActivity extends StatelessWidget {
-  static const _activities = [
-    _ActivityData(
-      title: '한강 공원 플로깅',
-      date: '오늘 07:32',
-      distance: '3.2 km',
-      trash: '24개',
-      duration: '42분',
-    ),
-    _ActivityData(
-      title: '올림픽공원 산책',
-      date: '어제 06:15',
-      distance: '2.8 km',
-      trash: '18개',
-      duration: '38분',
-    ),
-    _ActivityData(
-      title: '여의도 한강변',
-      date: '3일 전',
-      distance: '4.1 km',
-      trash: '31개',
-      duration: '55분',
-    ),
-  ];
-
+class _RecentActivity extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: _activities
-          .map((a) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ActivityCard(data: a),
-              ))
-          .toList(),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionsAsync = ref.watch(recentSessionsProvider);
+
+    return sessionsAsync.when(
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+      error: (e, st) => const SizedBox.shrink(),
+      data: (sessions) {
+        if (sessions.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                '아직 플로깅 기록이 없어요',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          );
+        }
+        final recent = sessions.take(3).toList();
+        return Column(
+          children: recent
+              .map((s) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _ActivityCard(session: s),
+                  ))
+              .toList(),
+        );
+      },
     );
   }
 }
 
-class _ActivityData {
-  final String title;
-  final String date;
-  final String distance;
-  final String trash;
-  final String duration;
-
-  const _ActivityData({
-    required this.title,
-    required this.date,
-    required this.distance,
-    required this.trash,
-    required this.duration,
-  });
+String _formatSessionDate(DateTime dt) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(dt.year, dt.month, dt.day);
+  final diff = today.difference(day).inDays;
+  final t =
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  if (diff == 0) return '오늘 $t';
+  if (diff == 1) return '어제 $t';
+  return '$diff일 전';
 }
 
 class _ActivityCard extends StatelessWidget {
-  final _ActivityData data;
+  final TrackingSessionEntity session;
 
-  const _ActivityCard({required this.data});
+  const _ActivityCard({required this.session});
 
   @override
   Widget build(BuildContext context) {
@@ -658,15 +752,17 @@ class _ActivityCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final cs = theme.colorScheme;
 
+    final title = session.locationLandmarkName ??
+        session.locationDescription ??
+        '플로깅 기록';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF2A4035)
-              : const Color(0xFFE5F0E8),
+          color: isDark ? const Color(0xFF2A4035) : const Color(0xFFE5F0E8),
           width: 1,
         ),
       ),
@@ -694,9 +790,12 @@ class _ActivityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data.title, style: theme.textTheme.titleSmall),
+                Text(title, style: theme.textTheme.titleSmall),
                 const SizedBox(height: 2),
-                Text(data.date, style: theme.textTheme.bodySmall),
+                Text(
+                  _formatSessionDate(session.startedAt),
+                  style: theme.textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -705,13 +804,13 @@ class _ActivityCard extends StatelessWidget {
             children: [
               _MiniStat(
                 icon: Icons.route_rounded,
-                value: data.distance,
+                value: '${session.distanceKm.toStringAsFixed(1)} km',
                 color: cs.primary,
               ),
               const SizedBox(height: 2),
               _MiniStat(
                 icon: Icons.delete_outline_rounded,
-                value: data.trash,
+                value: '${session.totalTrashCount}개',
                 color: AppColors.secondary,
               ),
             ],

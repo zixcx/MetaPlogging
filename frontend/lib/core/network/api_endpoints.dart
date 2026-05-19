@@ -24,12 +24,21 @@ class ApiEndpoints {
   static String trackingResume(String id) => '/tracking/sessions/$id/resume';
   static String trackingEnd(String id) => '/tracking/sessions/$id/end';
   static String trackingSession(String id) => '/tracking/sessions/$id';
-  static String trackingTrashPoints(String id) =>
-      '/tracking/sessions/$id/trash-points';
+  static String sessionPhotos(String id) => '/tracking/sessions/$id/photos';
+  static String sessionPhoto(String id, String photoId) =>
+      '/tracking/sessions/$id/photos/$photoId';
 
   // Places
   static const String placesSearch = '/places/search';
 
   // Users
   static const String userStats = '/users/me/stats';
+  static const String platformSummary = '/users/stats/summary';
+
+  // Feed / Posts
+  static const String posts = '/posts';
+  static String postDetail(String id) => '/posts/$id';
+  static String postLike(String id) => '/posts/$id/like';
+  static String postComments(String id) => '/posts/$id/comments';
+  static const String imageUpload = '/images/upload';
 }
