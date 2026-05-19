@@ -103,12 +103,25 @@ class TrackingSessionSummary(BaseModel):
         from_attributes = True
 
 
+class SessionPhotoResponse(BaseModel):
+    id: str
+    url: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    taken_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class TrackingSessionDetail(TrackingSessionSummary):
     start_lat: Optional[float] = None
     start_lng: Optional[float] = None
     end_lat: Optional[float] = None
     end_lng: Optional[float] = None
     points: List[TrackingPointResponse] = Field(default_factory=list)
+    photos: List[SessionPhotoResponse] = Field(default_factory=list)
 
 
 class AddPointsResponse(BaseModel):
@@ -144,3 +157,27 @@ class UserStatsResponse(BaseModel):
     total_duration_seconds: int
     total_sessions: int
     total_trash_count: int
+
+
+class PlatformStatsResponse(BaseModel):
+    total_users: int
+    today_plogging_users: int
+    total_sessions: int
+    total_distance_meters: int
+    total_trash_count: int
+
+
+class UserStatsEntry(BaseModel):
+    user_id: str
+    username: Optional[str]
+    name: Optional[str]
+    profile_image_url: Optional[str]
+    total_distance_meters: int
+    total_duration_seconds: int
+    total_sessions: int
+    total_trash_count: int
+
+
+class UserStatsListResponse(BaseModel):
+    items: List[UserStatsEntry]
+    total: int
