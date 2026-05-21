@@ -6,7 +6,7 @@ _INSECURE_DEFAULT = "dev-secret-key-change-in-production"
 
 class Settings(BaseSettings):
     SECRET_KEY: str = _INSECURE_DEFAULT
-    DATABASE_URL: str = "sqlite:///./metaplogging.db"
+    DATABASE_URL: str = "postgresql://metaplogging:metaplogging_dev@localhost:5432/metaplogging"
     GOOGLE_CLIENT_ID: str = ""
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

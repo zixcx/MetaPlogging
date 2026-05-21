@@ -29,25 +29,10 @@ from api.v1.comments import router as comments_router
 from api.v1.images import router as images_router
 
 
-def _run_lightweight_migrations() -> None:
-    """SQLAlchemy create_all 이 처리하지 못하는 컬럼 추가를 보강한다 (SQLite 한정)."""
-    pending = [
-        ("tracking_sessions", "paused_at", "DATETIME"),
-        ("tracking_sessions", "pause_duration_seconds", "INTEGER NOT NULL DEFAULT 0"),
-        ("tracking_sessions", "post_id", "VARCHAR"),
-    ]
-    with engine.begin() as conn:
-        for table, column, ddl in pending:
-            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
-            if column not in existing:
-                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
-    _run_lightweight_migrations()
     yield
 
 
