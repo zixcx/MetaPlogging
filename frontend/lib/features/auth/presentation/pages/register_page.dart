@@ -278,7 +278,7 @@ class _RegisterForm extends StatelessWidget {
             icon: Icons.lock_outline_rounded,
             obscureText: obscurePassword,
             textInputAction: TextInputAction.next,
-            helperText: '영문, 숫자 포함 8자 이상',
+            helperText: '대·소문자, 숫자, 특수문자 포함 8자 이상',
             suffixIcon: IconButton(
               icon: Icon(
                 obscurePassword
@@ -292,9 +292,11 @@ class _RegisterForm extends StatelessWidget {
             validator: (v) {
               if (v == null || v.isEmpty) return '비밀번호를 입력해주세요.';
               if (v.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
-              if (!v.contains(RegExp('[a-zA-Z]')) ||
-                  !v.contains(RegExp('[0-9]'))) {
-                return '영문과 숫자를 모두 포함해야 합니다.';
+              if (!v.contains(RegExp('[A-Z]'))) return '대문자를 1자 이상 포함해야 합니다.';
+              if (!v.contains(RegExp('[a-z]'))) return '소문자를 1자 이상 포함해야 합니다.';
+              if (!v.contains(RegExp('[0-9]'))) return '숫자를 1자 이상 포함해야 합니다.';
+              if (!v.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>\-_+=\[\]\\\/~`]'))) {
+                return '특수문자를 1자 이상 포함해야 합니다.';
               }
               return null;
             },

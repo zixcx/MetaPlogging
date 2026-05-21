@@ -168,8 +168,16 @@ class TrackingNotifier extends Notifier<TrackingState> {
       );
       state = const TrackingState();
       return session;
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+    } on Exception catch (e) {
+      final msg = e.toString();
+      // 409: 이미 완료/만료된 세션 → 로컬 상태만 초기화
+      if (msg.contains('409') ||
+          msg.contains('already completed') ||
+          msg.contains('expired')) {
+        state = const TrackingState();
+        return null;
+      }
+      state = state.copyWith(isLoading: false, error: msg);
       return null;
     }
   }

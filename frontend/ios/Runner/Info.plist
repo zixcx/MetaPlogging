@@ -47,6 +47,11 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Photo / Camera permissions -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>플로깅 사진을 게시물에 첨부하기 위해 사진 라이브러리 접근이 필요합니다.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>플로깅 사진을 직접 촬영하기 위해 카메라 접근이 필요합니다.</string>
 	<!-- Location permissions -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>플로깅 경로를 기록하기 위해 위치 정보가 필요합니다.</string>
@@ -58,6 +63,12 @@
 	<array>
 		<string>location</string>
 	</array>
+	<!-- Allow HTTP for dev backend (HTTP only, not HTTPS) -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

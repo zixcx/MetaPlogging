@@ -351,6 +351,7 @@ class _EmptySessionPlaceholder extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
