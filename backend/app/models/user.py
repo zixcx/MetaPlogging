@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Column, DateTime, String
 
 from app.core.database import Base
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 class User(Base):
@@ -17,7 +20,7 @@ class User(Base):
     profile_image_url = Column(String, nullable=True)
     auth_provider = Column(String, nullable=False, default="email")  # "email" | "google" | "kakao"
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(KST),
     )

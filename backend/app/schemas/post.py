@@ -49,6 +49,12 @@ class PostUpdate(BaseModel):
     tags: Optional[List[str]] = Field(default=None, max_length=20)
 
 
+class PostTrackingSummary(BaseModel):
+    distance_meters: int
+    duration_seconds: int
+    photo_count: int
+
+
 class PostResponse(BaseModel):
     id: str
     user_id: str
@@ -56,6 +62,7 @@ class PostResponse(BaseModel):
     tags: List[str] = Field(default_factory=list)
     images: Optional[List[str]] = None
     tracking_id: Optional[str] = None
+    tracking_session: Optional[PostTrackingSummary] = None
     is_verified: bool
     like_count: int
     comment_count: int
@@ -69,6 +76,13 @@ class PostResponse(BaseModel):
 
     @classmethod
     def from_orm_with_verified(cls, obj) -> "PostResponse":
+        tracking_session = None
+        if obj.tracking is not None:
+            tracking_session = PostTrackingSummary(
+                distance_meters=obj.tracking.distance_meters or 0,
+                duration_seconds=obj.tracking.duration_seconds or 0,
+                photo_count=len(obj.tracking.photos),
+            )
         data = {
             "id": obj.id,
             "user_id": obj.user_id,
@@ -76,6 +90,7 @@ class PostResponse(BaseModel):
             "tags": obj.tags or [],
             "images": obj.images,
             "tracking_id": obj.tracking_id,
+            "tracking_session": tracking_session,
             "is_verified": obj.tracking_id is not None,
             "like_count": obj.like_count,
             "comment_count": obj.comment_count,

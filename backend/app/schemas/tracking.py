@@ -181,3 +181,8 @@ class UserStatsEntry(BaseModel):
 class UserStatsListResponse(BaseModel):
     items: List[UserStatsEntry]
     total: int
+
+
+class DiscardSessionResponse(BaseModel):
+    post_id: Optional[str] = None   # 사진이 있을 때만 생성됨
+    photo_count: int

@@ -3,7 +3,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     Column,
     DateTime,
@@ -12,6 +11,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -26,17 +26,22 @@ class Post(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
 
     caption = Column(String, nullable=False)
-    tags = Column(JSON, nullable=False, default=list)       # ["해시태그1", ...]
-    images = Column(JSON, nullable=True)                    # ["http://...", ...]
-    tracking_id = Column(String, ForeignKey("tracking_sessions.id"), nullable=True, index=True)
+    tags = Column(JSONB, nullable=False, default=list)
+    images = Column(JSONB, nullable=True)
+    tracking_id = Column(
+        String,
+        ForeignKey("tracking_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     like_count = Column(Integer, nullable=False, default=0)
     comment_count = Column(Integer, nullable=False, default=0)
     share_count = Column(Integer, nullable=False, default=0)
 
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(KST),
         onupdate=lambda: datetime.now(KST),
@@ -62,9 +67,9 @@ class Comment(Base):
 
     content = Column(String, nullable=False)
 
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(KST),
         onupdate=lambda: datetime.now(KST),
@@ -81,6 +86,6 @@ class Like(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     post_id = Column(String, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
 
     post = relationship("Post", back_populates="likes")

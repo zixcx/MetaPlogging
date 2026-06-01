@@ -32,11 +32,11 @@ class TrackingSession(Base):
 
     status = Column(String, nullable=False, default=SESSION_STATUS_ACTIVE, index=True)
 
-    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
-    ended_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
+    ended_at = Column(DateTime(timezone=True), nullable=True)
     duration_seconds = Column(Integer, nullable=True)
 
-    paused_at = Column(DateTime, nullable=True)
+    paused_at = Column(DateTime(timezone=True), nullable=True)
     pause_duration_seconds = Column(Integer, nullable=False, default=0)
 
     distance_meters = Column(Integer, nullable=False, default=0)
@@ -56,9 +56,9 @@ class TrackingSession(Base):
     # 피드 공유 시 연결되는 post id (FK 없이 문자열만 저장, 순환 참조 방지)
     post_id = Column(String, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(KST),
         onupdate=lambda: datetime.now(KST),
@@ -77,6 +77,12 @@ class TrackingSession(Base):
         cascade="all, delete-orphan",
         order_by="TrashPoint.recorded_at",
     )
+    photos = relationship(
+        "SessionPhoto",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="SessionPhoto.taken_at",
+    )
 
 
 class TrackingPoint(Base):
@@ -91,7 +97,7 @@ class TrackingPoint(Base):
     )
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
-    recorded_at = Column(DateTime, nullable=False)
+    recorded_at = Column(DateTime(timezone=True), nullable=False)
 
     session = relationship("TrackingSession", back_populates="points")
 
@@ -110,6 +116,25 @@ class TrashPoint(Base):
     lng = Column(Float, nullable=False)
     category = Column(String, nullable=False)
     note = Column(String, nullable=True)
-    recorded_at = Column(DateTime, nullable=False, default=lambda: datetime.now(KST))
+    recorded_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
 
     session = relationship("TrackingSession", back_populates="trash_points")
+
+
+class SessionPhoto(Base):
+    __tablename__ = "session_photos"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(
+        String,
+        ForeignKey("tracking_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    url = Column(String, nullable=False)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    taken_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(KST))
+
+    session = relationship("TrackingSession", back_populates="photos")

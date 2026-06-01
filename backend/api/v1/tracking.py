@@ -1,8 +1,10 @@
+import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -15,6 +17,7 @@ from app.models.tracking import (
     SESSION_STATUS_COMPLETED,
     SESSION_STATUS_EXPIRED,
     SESSION_STATUS_PAUSED,
+    SessionPhoto,
     TrackingPoint,
     TrackingSession,
     TrashPoint,
@@ -24,7 +27,9 @@ from app.schemas.place import PlaceInput
 from app.schemas.tracking import (
     AddPointsRequest,
     AddPointsResponse,
+    DiscardSessionResponse,
     EndSessionRequest,
+    SessionPhotoResponse,
     StartSessionRequest,
     TrackingSessionDetail,
     TrackingSessionSummary,
@@ -44,20 +49,16 @@ def _now() -> datetime:
     return datetime.now(KST)
 
 
-def _aware(dt: datetime) -> datetime:
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=KST)
-
-
 def _expire_if_stale(session: TrackingSession, db: Session) -> None:
     """active/paused 세션이 timeout 을 초과하면 expired 로 자동 전환."""
     if session.status not in (SESSION_STATUS_ACTIVE, SESSION_STATUS_PAUSED):
         return
     timeout = timedelta(minutes=settings.TRACKING_SESSION_TIMEOUT_MINUTES)
-    started = _aware(session.started_at)
+    started = session.started_at
     if _now() - started > timeout:
         # 만료 시점에 paused 상태였다면 그 일시정지 구간도 누적
         if session.status == SESSION_STATUS_PAUSED and session.paused_at is not None:
-            paused_at = _aware(session.paused_at)
+            paused_at = session.paused_at
             session.pause_duration_seconds = int(
                 session.pause_duration_seconds + (started + timeout - paused_at).total_seconds()
             )
@@ -307,7 +308,7 @@ def end_session(
 
     # 종료 시점에 일시정지 중이라면, 현재 일시정지 구간을 누적시키고 정리
     if session.paused_at is not None:
-        paused_at = _aware(session.paused_at)
+        paused_at = session.paused_at
         session.pause_duration_seconds = int(
             session.pause_duration_seconds + (_now() - paused_at).total_seconds()
         )
@@ -316,7 +317,7 @@ def end_session(
     # 종료 시각/지속 시간 (전체 경과 - 일시정지 누적)
     ended = _now()
     session.ended_at = ended
-    started = _aware(session.started_at)
+    started = session.started_at
     elapsed = int((ended - started).total_seconds())
     session.duration_seconds = max(0, elapsed - int(session.pause_duration_seconds or 0))
     session.status = SESSION_STATUS_COMPLETED
@@ -386,10 +387,55 @@ def delete_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.models.post import Post
+
     session = _get_owned_session(session_id, current_user, db)
+    db.query(Post).filter(Post.tracking_id == session.id).update(
+        {"tracking_id": None}, synchronize_session=False
+    )
     db.delete(session)
     db.commit()
     return None
+
+
+@router.post("/sessions/{session_id}/discard", response_model=DiscardSessionResponse)
+def discard_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """활동 취소: 찍은 사진은 피드 포스트로 보존하고 GPS 기록(세션·포인트)은 삭제."""
+    from app.models.post import Post
+
+    session = _get_owned_session(session_id, current_user, db)
+
+    if session.status == SESSION_STATUS_COMPLETED:
+        raise HTTPException(status_code=409, detail="이미 완료된 세션은 취소할 수 없습니다")
+
+    photo_urls = [p.url for p in session.photos]
+    post_id = None
+
+    if photo_urls:
+        started = session.started_at.astimezone(KST)
+        caption = f"{started.strftime('%Y년 %m월 %d일')} 플로깅 취소 기록"
+        post = Post(
+            user_id=current_user.id,
+            caption=caption,
+            tags=[],
+            images=photo_urls,
+            tracking_id=None,
+        )
+        db.add(post)
+        db.flush()
+        post_id = post.id
+
+    db.query(Post).filter(Post.tracking_id == session.id).update(
+        {"tracking_id": None}, synchronize_session=False
+    )
+    db.delete(session)
+    db.commit()
+
+    return DiscardSessionResponse(post_id=post_id, photo_count=len(photo_urls))
 
 
 # ── Pause / Resume ─────────────────────────────────────────────────────────────
@@ -429,7 +475,7 @@ def resume_session(
             detail=f"Session is {session.status}; only paused sessions can be resumed",
         )
     if session.paused_at is not None:
-        paused_at = _aware(session.paused_at)
+        paused_at = session.paused_at
         session.pause_duration_seconds = int(
             session.pause_duration_seconds + (_now() - paused_at).total_seconds()
         )
@@ -492,3 +538,114 @@ def list_trash_points(
         .all()
     )
     return points
+
+
+# ── Session photos ────────────────────────────────────────────────────────────
+
+def _ext(filename: str) -> str:
+    return filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+
+def _upload_dir() -> Path:
+    path = Path(settings.UPLOAD_DIR)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@router.post(
+    "/sessions/{session_id}/photos",
+    response_model=SessionPhotoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_session_photo(
+    session_id: str,
+    file: UploadFile = File(...),
+    lat: Optional[float] = Form(None),
+    lng: Optional[float] = Form(None),
+    taken_at: Optional[datetime] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(session_id, current_user, db)
+    _expire_if_stale(session, db)
+    if session.status == SESSION_STATUS_EXPIRED:
+        raise HTTPException(status_code=409, detail="Session expired")
+
+    ext = _ext(file.filename or "")
+    if ext not in settings.ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"지원하지 않는 파일 형식입니다. 허용: {', '.join(sorted(settings.ALLOWED_IMAGE_EXTENSIONS))}",
+        )
+
+    saved_name = f"{uuid.uuid4()}.{ext}"
+    dest = _upload_dir() / saved_name
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="빈 파일은 업로드할 수 없습니다")
+
+    dest.write_bytes(content)
+
+    photo = SessionPhoto(
+        session_id=session.id,
+        url=f"/uploads/{saved_name}",
+        lat=lat,
+        lng=lng,
+        taken_at=taken_at,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return photo
+
+
+@router.get(
+    "/sessions/{session_id}/photos",
+    response_model=List[SessionPhotoResponse],
+)
+def list_session_photos(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(session_id, current_user, db)
+    photos = (
+        db.query(SessionPhoto)
+        .filter(SessionPhoto.session_id == session.id)
+        .order_by(SessionPhoto.taken_at.asc().nulls_last(), SessionPhoto.created_at.asc())
+        .all()
+    )
+    return photos
+
+
+@router.delete(
+    "/sessions/{session_id}/photos/{photo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_session_photo(
+    session_id: str,
+    photo_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(session_id, current_user, db)
+    photo = (
+        db.query(SessionPhoto)
+        .filter(SessionPhoto.id == photo_id, SessionPhoto.session_id == session.id)
+        .first()
+    )
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    if photo.url and photo.url.startswith("/uploads/"):
+        file_path = _upload_dir() / photo.url.removeprefix("/uploads/")
+        if file_path.is_file():
+            try:
+                file_path.unlink()
+            except OSError:
+                pass
+
+    db.delete(photo)
+    db.commit()
+    return None

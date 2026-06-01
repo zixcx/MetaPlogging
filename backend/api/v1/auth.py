@@ -29,6 +29,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 bearer_scheme = HTTPBearer()
 
 
+def _validate_password(password: str) -> None:
+    errors = []
+    if len(password) < 8:
+        errors.append("8자 이상이어야 합니다")
+    if not any(c.isupper() for c in password):
+        errors.append("대문자를 1자 이상 포함해야 합니다")
+    if not any(c.islower() for c in password):
+        errors.append("소문자를 1자 이상 포함해야 합니다")
+    if not any(c.isdigit() for c in password):
+        errors.append("숫자를 1자 이상 포함해야 합니다")
+    if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
+        errors.append("특수문자를 1자 이상 포함해야 합니다")
+    if errors:
+        raise HTTPException(status_code=422, detail=f"비밀번호 조건 미충족: {', '.join(errors)}")
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _build_auth_response(user: User) -> AuthTokenResponse:
@@ -64,6 +80,8 @@ def _get_current_user(
 
 @router.post("/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
+    _validate_password(body.password)
+
     if db.query(User).filter(User.username == body.username).first():
         raise HTTPException(status_code=400, detail="Username already taken")
     if db.query(User).filter(User.email == body.email).first():

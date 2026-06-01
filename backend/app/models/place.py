@@ -21,7 +21,7 @@ class Place(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(KST),
     )
