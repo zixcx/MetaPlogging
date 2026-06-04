@@ -23,6 +23,7 @@ class ApiEndpoints {
   static String trackingPause(String id) => '/tracking/sessions/$id/pause';
   static String trackingResume(String id) => '/tracking/sessions/$id/resume';
   static String trackingEnd(String id) => '/tracking/sessions/$id/end';
+  static String trackingDiscard(String id) => '/tracking/sessions/$id/discard';
   static String trackingSession(String id) => '/tracking/sessions/$id';
   static String sessionPhotos(String id) => '/tracking/sessions/$id/photos';
   static String sessionPhoto(String id, String photoId) =>

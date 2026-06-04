@@ -16,4 +16,5 @@ abstract class TrackingRepository {
   Future<List<TrackingSessionEntity>> getSessions({int limit, int offset});
   Future<TrackingSessionEntity> getSession(String sessionId);
   Future<void> deleteSession(String sessionId);
+  Future<({String? postId, int photoCount})> discardSession(String sessionId);
 }

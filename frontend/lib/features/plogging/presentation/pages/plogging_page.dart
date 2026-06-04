@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meta_plogging/core/router/app_router.dart';
 import 'package:meta_plogging/core/theme/app_theme.dart';
+import 'package:meta_plogging/features/feed/presentation/providers/feed_provider.dart';
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
 import 'package:meta_plogging/features/plogging/presentation/pages/tracking_page.dart';
 import 'package:meta_plogging/features/plogging/presentation/providers/sessions_provider.dart';
 import 'package:meta_plogging/features/plogging/presentation/providers/tracking_provider.dart';
+import 'package:meta_plogging/features/plogging/presentation/widgets/end_session_sheet.dart';
+import 'package:meta_plogging/features/profile/presentation/providers/profile_provider.dart';
 
 class PloggingPage extends ConsumerStatefulWidget {
   const PloggingPage({super.key});
@@ -17,6 +20,7 @@ class PloggingPage extends ConsumerStatefulWidget {
 
 class _PloggingPageState extends ConsumerState<PloggingPage> {
   bool _navigating = false;
+  bool _recoveryDialogShown = false;
 
   void _goTracking() {
     if (_navigating) return;
@@ -31,6 +35,96 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
         .then((_) => _navigating = false);
   }
 
+  void _showSessionRecoveryDialog(TrackingState state) {
+    final notifier = ref.read(trackingProvider.notifier);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('진행 중인 플로깅이 있어요'),
+        content: const Text('이전에 시작한 플로깅 세션이 감지됐습니다.\n어떻게 하시겠어요?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _goTracking();
+            },
+            child: const Text('활동 유지'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              _recoveryDialogShown = false;
+              // GPS 기록 삭제, 사진은 사진 기록에 보존
+              final result = await notifier.discardSession();
+              if (!mounted) return;
+              if (result.success && result.postId != null) {
+                ref.read(feedProvider.notifier).refresh();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '${result.photoCount}장의 사진이 사진 기록에 저장됐어요',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: AppColors.primary,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: const Text('활동 취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // dialog ctx가 아닌 page context 사용
+              _showEndSheet(context, state, notifier);
+            },
+            style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary),
+            child: const Text('활동 종료'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEndSheet(
+      BuildContext ctx, TrackingState state, TrackingNotifier notifier) {
+    showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => EndSessionSheet(
+        distanceKm: state.distanceKm.toStringAsFixed(2),
+        duration: state.formattedTime,
+        onConfirm: ({required trashItems, required locationDescription}) async {
+          await notifier.endSession(
+            trashItems: trashItems,
+            locationDescription: locationDescription,
+          );
+          if (!sheetCtx.mounted) return;
+          if (!ref.read(trackingProvider).isRunning) {
+            ref.read(completedSessionsProvider.notifier).refresh();
+            ref.invalidate(recentSessionsProvider);
+            Navigator.of(sheetCtx).pop();
+          }
+        },
+      ),
+    ).then((_) {
+      // 시트를 드래그로 닫은 경우(미확정), 세션이 여전히 살아있으면 다이얼로그 재표시
+      if (!mounted) return;
+      final current = ref.read(trackingProvider);
+      if (current.isRunning) {
+        _recoveryDialogShown = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showSessionRecoveryDialog(current);
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(trackingProvider);
@@ -38,7 +132,7 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 에러 표시
+    // 에러 표시 + 세션 이벤트 처리
     ref.listen<TrackingState>(trackingProvider, (prev, next) {
       final err = next.error;
       if (err != null && err != prev?.error) {
@@ -52,8 +146,22 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
         );
         ref.read(trackingProvider.notifier).clearError();
       }
-      // 세션 시작됐으면 TrackingPage로 이동
-      if ((prev == null || !prev.isRunning) && next.isRunning) {
+
+      // 앱 재실행 후 서버에서 세션 복원 시 → 선택 다이얼로그
+      if (next.isRestoredSession &&
+          !(prev?.isRestoredSession ?? false) &&
+          !_recoveryDialogShown) {
+        _recoveryDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showSessionRecoveryDialog(next);
+        });
+        return;
+      }
+
+      // 새 세션이 시작됐으면 TrackingPage로 이동
+      if ((prev == null || !prev.isRunning) &&
+          next.isRunning &&
+          !next.isRestoredSession) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTracking());
       }
     });
@@ -74,15 +182,6 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 이어하기 배너 ──────────────────────────
-                  if (state.session != null && !state.isRunning) ...[
-                    _ResumeBanner(
-                      session: state.session!,
-                      onResume: _goTracking,
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
                   // ── 시작 카드 ─────────────────────────────
                   _StartCard(
                     isDark: isDark,
@@ -126,59 +225,6 @@ class _PloggingPageState extends ConsumerState<PloggingPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── 이어하기 배너 ──────────────────────────────────────────────
-class _ResumeBanner extends StatelessWidget {
-  final TrackingSessionEntity session;
-  final VoidCallback onResume;
-
-  const _ResumeBanner({required this.session, required this.onResume});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return GestureDetector(
-      onTap: onResume,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.orange.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.orange.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.pause_circle_outline_rounded,
-                color: Colors.orange, size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '중단된 플로깅이 있어요',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: Colors.orange,
-                    ),
-                  ),
-                  Text(
-                    '${session.distanceKm.toStringAsFixed(2)}km · ${session.formattedDuration} 진행됨',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                size: 14, color: Colors.orange),
-          ],
-        ),
       ),
     );
   }

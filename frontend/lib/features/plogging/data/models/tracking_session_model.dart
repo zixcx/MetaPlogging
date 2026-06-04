@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:meta_plogging/features/plogging/data/models/session_photo_model.dart';
 import 'package:meta_plogging/features/plogging/domain/entities/tracking_session_entity.dart';
@@ -30,6 +31,9 @@ class TrackingSessionModel {
       endedAt: json['ended_at'] != null
           ? DateTime.parse(json['ended_at'] as String)
           : null,
+      pausedAt: json['paused_at'] != null
+          ? DateTime.parse(json['paused_at'] as String)
+          : null,
       durationSeconds: (json['duration_seconds'] as num?)?.toInt() ?? 0,
       distanceMeters: (json['distance_meters'] as num?)?.toInt() ?? 0,
       path: pathList,
@@ -51,7 +55,10 @@ class TrackingSessionModel {
         return TrackingStatus.paused;
       case 'completed':
         return TrackingStatus.completed;
+      case 'expired':
+        return TrackingStatus.expired;
       default:
+        debugPrint('[TrackingSessionModel] Unknown status: "$value"');
         return TrackingStatus.expired;
     }
   }

@@ -94,7 +94,7 @@ class HomePage extends ConsumerWidget {
 
                   // ── Quick actions ─────────────────────────
                   Text(
-                    '바로 시작하기',
+                    '기록하기',
                     style: theme.textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
@@ -299,10 +299,10 @@ class _StatsCard extends ConsumerWidget {
               VerticalDivider(width: 1, thickness: 1, color: dividerColor),
               Expanded(
                 child: _StatItem(
-                  label: '수거량',
+                  label: '총 촬영 수',
                   value: '${stats.totalTrashCount}',
                   unit: '개',
-                  icon: Icons.delete_outline_rounded,
+                  icon: Icons.camera_alt_rounded,
                   color: AppColors.secondary,
                 ),
               ),
@@ -442,13 +442,13 @@ class _QuickActions extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(
-                    Icons.edit_note_rounded,
+                    Icons.camera_alt_rounded,
                     size: 22,
                     color: Colors.white,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '기록하기',
+                    '사진 촬영',
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
@@ -476,13 +476,13 @@ class _QuickActions extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.map_outlined,
+                    Icons.photo_library_outlined,
                     size: 22,
                     color: AppColors.primary,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '활동지도',
+                    '앨범 사진',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
@@ -591,7 +591,7 @@ class _WeeklyChart extends ConsumerWidget {
           height: 120,
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
-        error: (_, __) => const SizedBox(height: 120),
+        error: (_, _) => const SizedBox(height: 120),
         data: (sessions) {
           final weekStart = _weekStart();
           final weekEnd = weekStart.add(const Duration(days: 7));

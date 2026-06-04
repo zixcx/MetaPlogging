@@ -61,4 +61,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
   @override
   Future<void> deleteSession(String sessionId) =>
       _datasource.deleteSession(sessionId);
+
+  @override
+  Future<({String? postId, int photoCount})> discardSession(String sessionId) =>
+      _datasource.discardSession(sessionId);
 }

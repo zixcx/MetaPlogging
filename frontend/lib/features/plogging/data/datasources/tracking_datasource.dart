@@ -27,6 +27,8 @@ class TrackingDatasource {
   Future<TrackingSessionEntity?> getActiveSession() async {
     try {
       final res = await _dio.get(ApiEndpoints.trackingActive);
+      // 진행 중 세션 없음 → 서버가 200+null 또는 404 반환
+      if (res.data == null) return null;
       return TrackingSessionModel.fromJson(res.data as Map<String, dynamic>);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
@@ -56,7 +58,10 @@ class TrackingDatasource {
   }
 
   Future<TrackingSessionEntity> resumeSession(String id) async {
-    final res = await _dio.post(ApiEndpoints.trackingResume(id));
+    final res = await _dio.post(
+      ApiEndpoints.trackingResume(id),
+      data: <String, dynamic>{},
+    );
     return TrackingSessionModel.fromJson(res.data as Map<String, dynamic>);
   }
 
@@ -111,5 +116,14 @@ class TrackingDatasource {
 
   Future<void> deleteSession(String id) async {
     await _dio.delete(ApiEndpoints.trackingSession(id));
+  }
+
+  Future<({String? postId, int photoCount})> discardSession(String id) async {
+    final res = await _dio.post(ApiEndpoints.trackingDiscard(id));
+    final data = res.data as Map<String, dynamic>;
+    return (
+      postId: data['post_id'] as String?,
+      photoCount: (data['photo_count'] as num?)?.toInt() ?? 0,
+    );
   }
 }

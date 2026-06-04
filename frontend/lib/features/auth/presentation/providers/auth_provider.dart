@@ -1,3 +1,4 @@
+import 'package:meta_plogging/core/network/auth_expired_notifier.dart';
 import 'package:meta_plogging/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:meta_plogging/features/auth/domain/entities/user_entity.dart';
 import 'package:meta_plogging/features/auth/domain/usecases/find_password_usecase.dart';
@@ -19,6 +20,7 @@ part 'auth_provider.g.dart';
 class AuthNotifier extends _$AuthNotifier {
   @override
   Future<UserEntity?> build() async {
+    ref.watch(authExpiredProvider); // 토큰 강제 만료 시 rebuild → null 반환 → 로그인 리다이렉트
     final repo = ref.read(authRepositoryProvider);
     return repo.getCurrentUser();
   }

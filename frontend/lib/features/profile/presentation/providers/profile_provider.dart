@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta_plogging/core/network/api_endpoints.dart';
 import 'package:meta_plogging/core/network/dio_client.dart';

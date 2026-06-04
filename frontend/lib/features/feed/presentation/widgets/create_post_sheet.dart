@@ -49,16 +49,16 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
       if (!mounted) return;
       setState(() => _isPosting = false);
 
-      String message = '게시 실패';
+      String message = '전송 실패';
       if (e is DioException) {
         final detail = e.response?.data;
         if (detail != null) {
-          message = '게시 실패 (${e.response?.statusCode}): $detail';
+          message = '전송 실패 (${e.response?.statusCode}): $detail';
         } else {
-          message = '게시 실패: ${e.message}';
+          message = '전송 실패: ${e.message}';
         }
       } else {
-        message = '게시 실패: $e';
+        message = '전송 실패: $e';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,7 +130,7 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                 Expanded(
                   child: Center(
                     child: Text(
-                      '새 게시글',
+                      '사진 전송',
                       style: theme.textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -145,7 +145,7 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
-                          '게시',
+                          '전송',
                           style: TextStyle(
                             color: _canPost
                                 ? AppColors.primary

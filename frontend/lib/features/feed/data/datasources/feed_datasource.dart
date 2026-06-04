@@ -35,7 +35,7 @@ class FeedDatasource {
     final body = <String, dynamic>{
       'caption': caption,
       if (images != null && images.isNotEmpty) 'images': images,
-      'tracking_id': trackingId,
+      if (trackingId != null) 'tracking_id': trackingId, // ignore: use_null_aware_elements
     };
     final res = await _dio.post(ApiEndpoints.posts, data: body);
     return PostModel.fromJson(res.data as Map<String, dynamic>);

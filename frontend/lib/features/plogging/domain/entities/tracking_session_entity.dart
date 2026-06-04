@@ -146,6 +146,7 @@ class TrackingSessionEntity {
   final TrackingStatus status;
   final DateTime startedAt;
   final DateTime? endedAt;
+  final DateTime? pausedAt;
   final int durationSeconds;
   final int distanceMeters;
   final List<NLatLng> path;
@@ -161,6 +162,7 @@ class TrackingSessionEntity {
     required this.status,
     required this.startedAt,
     this.endedAt,
+    this.pausedAt,
     required this.durationSeconds,
     required this.distanceMeters,
     required this.path,
@@ -171,6 +173,26 @@ class TrackingSessionEntity {
     this.pauseDurationSeconds = 0,
     this.photos = const [],
   });
+
+  TrackingSessionEntity copyWith({
+    List<SessionPhotoEntity>? photos,
+  }) =>
+      TrackingSessionEntity(
+        id: id,
+        status: status,
+        startedAt: startedAt,
+        endedAt: endedAt,
+        pausedAt: pausedAt,
+        durationSeconds: durationSeconds,
+        distanceMeters: distanceMeters,
+        path: path,
+        locationLandmarkId: locationLandmarkId,
+        locationLandmarkName: locationLandmarkName,
+        locationDescription: locationDescription,
+        trashItems: trashItems,
+        pauseDurationSeconds: pauseDurationSeconds,
+        photos: photos ?? this.photos,
+      );
 
   double get distanceKm => distanceMeters / 1000;
 
